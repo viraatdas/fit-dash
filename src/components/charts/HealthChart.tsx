@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import {
   ComposedChart,
   Bar,
@@ -13,15 +13,54 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui';
+import { Card, CardHeader, CardTitle, CardContent, Button } from '@/components/ui';
 import { DailyHealth } from '@/types';
 import { format, parseISO } from 'date-fns';
 
 interface HealthChartProps {
   data: DailyHealth[];
+  onDataUpdate?: () => void;
 }
 
-export function HealthChart({ data }: HealthChartProps) {
+export function HealthChart({ data, onDataUpdate }: HealthChartProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setUploadMessage(null);
+
+    try {
+      const text = await file.text();
+      const json = JSON.parse(text);
+
+      const response = await fetch('/api/health', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(json),
+      });
+
+      const result = await response.json();
+      if (result.success) {
+        setUploadMessage(`Uploaded successfully!`);
+        onDataUpdate?.();
+      } else {
+        setUploadMessage(`Error: ${result.error}`);
+      }
+    } catch (err) {
+      setUploadMessage(`Error: ${err instanceof Error ? err.message : 'Failed to upload'}`);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
   const chartData = useMemo(() => {
     return data.slice(0, 30).reverse().map(d => ({
       ...d,
@@ -57,13 +96,35 @@ export function HealthChart({ data }: HealthChartProps) {
         <CardContent>
           <div className="text-center py-8">
             <p className="text-gray-400 font-light mb-4">No health data yet</p>
+
+            <div className="mb-6">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+              <Button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                variant="outline"
+              >
+                {uploading ? 'Uploading...' : '📁 Upload Health Export JSON'}
+              </Button>
+              {uploadMessage && (
+                <p className={`text-sm mt-2 ${uploadMessage.includes('Error') ? 'text-red-500' : 'text-green-500'}`}>
+                  {uploadMessage}
+                </p>
+              )}
+            </div>
+
             <div className="text-sm text-gray-500 font-light space-y-2">
-              <p>To sync your Apple Health data:</p>
+              <p>To export from Health Auto Export app:</p>
               <ol className="list-decimal list-inside text-left max-w-md mx-auto space-y-1">
-                <li>Install "Health Auto Export" from the App Store</li>
-                <li>Configure it to export to REST API</li>
-                <li>Set the URL to: <code className="bg-gray-100 px-1 rounded">https://fit-dash-psi.vercel.app/api/health</code></li>
-                <li>Enable daily automatic export</li>
+                <li>Open Health Auto Export on your iPhone</li>
+                <li>Go to Export → Export as JSON</li>
+                <li>Upload the JSON file here</li>
               </ol>
             </div>
           </div>
@@ -74,6 +135,30 @@ export function HealthChart({ data }: HealthChartProps) {
 
   return (
     <div className="space-y-6">
+      {/* Upload Button */}
+      <div className="flex justify-end">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json"
+          onChange={handleFileUpload}
+          className="hidden"
+        />
+        <Button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          variant="outline"
+          size="sm"
+        >
+          {uploading ? 'Uploading...' : '📁 Upload JSON'}
+        </Button>
+        {uploadMessage && (
+          <span className={`ml-3 text-sm ${uploadMessage.includes('Error') ? 'text-red-500' : 'text-green-500'}`}>
+            {uploadMessage}
+          </span>
+        )}
+      </div>
+
       {/* Stats Summary */}
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">

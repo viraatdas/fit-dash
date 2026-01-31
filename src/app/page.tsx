@@ -145,7 +145,7 @@ export default function Dashboard() {
           </TabsContent>
 
           <TabsContent value="health" className="space-y-6">
-            <HealthChart data={healthData} />
+            <HealthChart data={healthData} onDataUpdate={fetchHealthData} />
           </TabsContent>
         </Tabs>
       </main>

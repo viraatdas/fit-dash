@@ -126,9 +126,9 @@ function processHealthExportData(payload: unknown): DailyHealth[] {
   return results.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
-// Handle the original metrics format
+// Handle the original metrics format (from file export)
 function processMetricsFormat(payload: HealthAutoExportPayload): DailyHealth[] {
-  const dailyMap = new Map<string, DailyHealth>();
+  const dailyMap = new Map<string, DailyHealth & { _counts: Record<string, number> }>();
 
   if (!payload.data?.metrics) {
     return [];
@@ -139,29 +139,59 @@ function processMetricsFormat(payload: HealthAutoExportPayload): DailyHealth[] {
     if (!metricKey) continue;
 
     for (const dataPoint of metric.data || []) {
-      const date = extractDate(dataPoint.date) || dataPoint.date;
+      const date = extractDate(dataPoint.date);
       if (!date) continue;
 
       if (!dailyMap.has(date)) {
-        dailyMap.set(date, { date });
+        dailyMap.set(date, { date, _counts: {} });
       }
 
       const daily = dailyMap.get(date)!;
-      const value = dataPoint.qty ?? dataPoint.value ?? dataPoint.Avg ?? 0;
+      let value = dataPoint.qty ?? dataPoint.value ?? dataPoint.Avg ?? 0;
 
+      // Convert units
       if (metricKey === 'walkingDistance') {
-        daily[metricKey] = value * 0.000621371;
+        value = value * 0.000621371; // meters to miles
       } else if (metricKey === 'sleepHours') {
-        daily[metricKey] = value / 60;
+        value = value / 60; // minutes to hours
+      }
+
+      const currentValue = (daily as unknown as Record<string, number>)[metricKey] || 0;
+
+      if (SUM_FIELDS.includes(metricKey)) {
+        // Sum these fields
+        (daily as unknown as Record<string, number>)[metricKey] = currentValue + value;
       } else {
-        (daily as unknown as Record<string, number | string>)[metricKey] = value;
+        // Average these fields (like heart rate)
+        daily._counts[metricKey] = (daily._counts[metricKey] || 0) + 1;
+        (daily as unknown as Record<string, number>)[metricKey] = currentValue + value;
       }
     }
   }
 
-  return Array.from(dailyMap.values()).sort(
-    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-  );
+  // Finalize averages and clean up
+  const results: DailyHealth[] = [];
+  dailyMap.forEach((daily) => {
+    const { _counts, ...data } = daily;
+
+    // Calculate averages for non-sum fields
+    Object.entries(_counts).forEach(([key, count]) => {
+      if (!SUM_FIELDS.includes(key) && count > 1) {
+        (data as unknown as Record<string, number>)[key] =
+          Math.round((data as unknown as Record<string, number>)[key] / count);
+      }
+    });
+
+    // Round values
+    if (data.steps) data.steps = Math.round(data.steps);
+    if (data.activeCalories) data.activeCalories = Math.round(data.activeCalories);
+    if (data.walkingDistance) data.walkingDistance = Math.round(data.walkingDistance * 100) / 100;
+    if (data.flightsClimbed) data.flightsClimbed = Math.round(data.flightsClimbed);
+
+    results.push(data);
+  });
+
+  return results.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
 // GET - Retrieve stored health data
