@@ -112,7 +112,7 @@ export default function Dashboard() {
           <StatsOverview workouts={workouts} latestInBody={latestInBody} />
         </div>
 
-        <Tabs defaultValue="insights" className="space-y-6">
+        <Tabs defaultValue="progress" className="space-y-6">
           <TabsList>
             <TabsTrigger value="insights">Insights</TabsTrigger>
             <TabsTrigger value="progress">Progress</TabsTrigger>
