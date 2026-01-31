@@ -1,41 +1,47 @@
 import { NextResponse } from 'next/server';
-import { put, list, del } from '@vercel/blob';
+import { Redis } from '@upstash/redis';
 import { DailyHealth, HealthAutoExportPayload } from '@/types';
 
-const BLOB_FILENAME = 'health-data.json';
+const REDIS_KEY = 'health-data';
 
-// Cache for in-memory access (populated from blob on first request)
+// Initialize Redis client (lazy - only if env vars are set)
+function getRedis(): Redis | null {
+  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+    return new Redis({
+      url: process.env.UPSTASH_REDIS_REST_URL,
+      token: process.env.UPSTASH_REDIS_REST_TOKEN,
+    });
+  }
+  return null;
+}
+
+// Cache for in-memory access
 let healthDataCache: DailyHealth[] | null = null;
 let lastUpdatedCache: string | null = null;
 
-async function loadFromBlob(): Promise<{ data: DailyHealth[]; lastUpdated: string | null }> {
-  try {
-    const { blobs } = await list({ prefix: BLOB_FILENAME });
-    if (blobs.length > 0) {
-      const response = await fetch(blobs[0].url);
-      const json = await response.json();
-      return { data: json.data || [], lastUpdated: json.lastUpdated || null };
+async function loadFromStore(): Promise<{ data: DailyHealth[]; lastUpdated: string | null }> {
+  const redis = getRedis();
+  if (redis) {
+    try {
+      const stored = await redis.get<{ data: DailyHealth[]; lastUpdated: string }>(REDIS_KEY);
+      if (stored) {
+        return { data: stored.data || [], lastUpdated: stored.lastUpdated || null };
+      }
+    } catch (err) {
+      console.error('Failed to load from Redis:', err);
     }
-  } catch (err) {
-    console.error('Failed to load from blob:', err);
   }
   return { data: [], lastUpdated: null };
 }
 
-async function saveToBlob(data: DailyHealth[], lastUpdated: string): Promise<void> {
-  try {
-    // Delete old blob if exists
-    const { blobs } = await list({ prefix: BLOB_FILENAME });
-    for (const blob of blobs) {
-      await del(blob.url);
+async function saveToStore(data: DailyHealth[], lastUpdated: string): Promise<void> {
+  const redis = getRedis();
+  if (redis) {
+    try {
+      await redis.set(REDIS_KEY, { data, lastUpdated });
+    } catch (err) {
+      console.error('Failed to save to Redis:', err);
     }
-    // Save new data
-    await put(BLOB_FILENAME, JSON.stringify({ data, lastUpdated }), {
-      access: 'public',
-      contentType: 'application/json',
-    });
-  } catch (err) {
-    console.error('Failed to save to blob:', err);
   }
 }
 
@@ -231,7 +237,7 @@ function processMetricsFormat(payload: HealthAutoExportPayload): DailyHealth[] {
 export async function GET() {
   // Load from blob if cache is empty
   if (healthDataCache === null) {
-    const loaded = await loadFromBlob();
+    const loaded = await loadFromStore();
     healthDataCache = loaded.data;
     lastUpdatedCache = loaded.lastUpdated;
   }
@@ -263,7 +269,7 @@ export async function POST(request: Request) {
     if (processedData.length > 0) {
       // Load existing data from blob if cache is empty
       if (healthDataCache === null) {
-        const loaded = await loadFromBlob();
+        const loaded = await loadFromStore();
         healthDataCache = loaded.data;
         lastUpdatedCache = loaded.lastUpdated;
       }
@@ -307,7 +313,7 @@ export async function POST(request: Request) {
       lastUpdatedCache = new Date().toISOString();
 
       // Persist to blob
-      await saveToBlob(healthDataCache, lastUpdatedCache);
+      await saveToStore(healthDataCache, lastUpdatedCache);
     }
 
     return NextResponse.json({
