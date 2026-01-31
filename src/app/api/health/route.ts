@@ -1,10 +1,43 @@
 import { NextResponse } from 'next/server';
+import { put, list, del } from '@vercel/blob';
 import { DailyHealth, HealthAutoExportPayload } from '@/types';
 
-// In production, you'd want to use Vercel KV, Blob, or a database
-// For now, we'll store in memory (resets on redeploy) and also return to client
-let healthDataStore: DailyHealth[] = [];
-let lastUpdated: string | null = null;
+const BLOB_FILENAME = 'health-data.json';
+
+// Cache for in-memory access (populated from blob on first request)
+let healthDataCache: DailyHealth[] | null = null;
+let lastUpdatedCache: string | null = null;
+
+async function loadFromBlob(): Promise<{ data: DailyHealth[]; lastUpdated: string | null }> {
+  try {
+    const { blobs } = await list({ prefix: BLOB_FILENAME });
+    if (blobs.length > 0) {
+      const response = await fetch(blobs[0].url);
+      const json = await response.json();
+      return { data: json.data || [], lastUpdated: json.lastUpdated || null };
+    }
+  } catch (err) {
+    console.error('Failed to load from blob:', err);
+  }
+  return { data: [], lastUpdated: null };
+}
+
+async function saveToBlob(data: DailyHealth[], lastUpdated: string): Promise<void> {
+  try {
+    // Delete old blob if exists
+    const { blobs } = await list({ prefix: BLOB_FILENAME });
+    for (const blob of blobs) {
+      await del(blob.url);
+    }
+    // Save new data
+    await put(BLOB_FILENAME, JSON.stringify({ data, lastUpdated }), {
+      access: 'public',
+      contentType: 'application/json',
+    });
+  } catch (err) {
+    console.error('Failed to save to blob:', err);
+  }
+}
 
 const WEBHOOK_SECRET = process.env.HEALTH_WEBHOOK_SECRET;
 
@@ -196,10 +229,17 @@ function processMetricsFormat(payload: HealthAutoExportPayload): DailyHealth[] {
 
 // GET - Retrieve stored health data
 export async function GET() {
+  // Load from blob if cache is empty
+  if (healthDataCache === null) {
+    const loaded = await loadFromBlob();
+    healthDataCache = loaded.data;
+    lastUpdatedCache = loaded.lastUpdated;
+  }
+
   return NextResponse.json({
     success: true,
-    lastUpdated,
-    data: healthDataStore,
+    lastUpdated: lastUpdatedCache,
+    data: healthDataCache,
   });
 }
 
@@ -221,42 +261,59 @@ export async function POST(request: Request) {
     const processedData = processHealthExportData(payload);
 
     if (processedData.length > 0) {
+      // Load existing data from blob if cache is empty
+      if (healthDataCache === null) {
+        const loaded = await loadFromBlob();
+        healthDataCache = loaded.data;
+        lastUpdatedCache = loaded.lastUpdated;
+      }
+
       // Merge with existing data - update existing dates or add new ones
       const dataMap = new Map<string, DailyHealth>();
 
       // Add existing data
-      for (const d of healthDataStore) {
+      for (const d of healthDataCache) {
         const date = extractDate(d.date) || d.date;
         dataMap.set(date, { ...d, date });
       }
 
-      // Merge new data (overwrites existing for same date)
+      // Merge new data - accumulate values for same date
       for (const d of processedData) {
         const existing = dataMap.get(d.date);
         if (existing) {
-          // Merge fields - new data takes priority for non-zero values
-          dataMap.set(d.date, {
-            ...existing,
-            ...Object.fromEntries(
-              Object.entries(d).filter(([, v]) => v !== undefined && v !== 0)
-            ),
-          });
+          // Accumulate sum fields, update others
+          const merged: DailyHealth = { ...existing };
+          for (const [key, value] of Object.entries(d)) {
+            if (key === 'date' || value === undefined || value === 0) continue;
+            if (SUM_FIELDS.includes(key)) {
+              // Accumulate these fields
+              (merged as unknown as Record<string, number>)[key] =
+                ((existing as unknown as Record<string, number>)[key] || 0) + (value as number);
+            } else {
+              // Replace these fields (like heart rate - take latest)
+              (merged as unknown as Record<string, number>)[key] = value as number;
+            }
+          }
+          dataMap.set(d.date, merged);
         } else {
           dataMap.set(d.date, d);
         }
       }
 
-      healthDataStore = Array.from(dataMap.values())
+      healthDataCache = Array.from(dataMap.values())
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .slice(0, 90);
 
-      lastUpdated = new Date().toISOString();
+      lastUpdatedCache = new Date().toISOString();
+
+      // Persist to blob
+      await saveToBlob(healthDataCache, lastUpdatedCache);
     }
 
     return NextResponse.json({
       success: true,
       message: `Processed ${processedData.length} days of health data`,
-      lastUpdated,
+      lastUpdated: lastUpdatedCache,
     });
   } catch (error) {
     console.error('Health data error:', error);
