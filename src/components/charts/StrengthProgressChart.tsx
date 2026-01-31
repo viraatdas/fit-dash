@@ -144,16 +144,16 @@ export function StrengthProgressChart({ workouts }: StrengthProgressChartProps) 
   return (
     <Card>
       <CardHeader>
-        <div className="flex justify-between items-start">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
           <div>
-            <CardTitle>Strength Progress (Estimated 1RM)</CardTitle>
-            <p className="text-sm font-light text-gray-400 mt-1">
-              Normalized strength across major lifts over time
+            <CardTitle>Strength Progress (Est. 1RM)</CardTitle>
+            <p className="text-xs sm:text-sm font-light text-gray-400 mt-1">
+              Normalized strength over time
             </p>
           </div>
           {progressStats && (
-            <div className="text-right">
-              <p className={`text-2xl font-light ${progressStats.isPositive ? 'text-green-500' : 'text-red-400'}`}>
+            <div className="text-left sm:text-right">
+              <p className={`text-xl sm:text-2xl font-light ${progressStats.isPositive ? 'text-green-500' : 'text-red-400'}`}>
                 {progressStats.isPositive ? '+' : ''}{progressStats.percentChange}%
               </p>
               <p className="text-xs font-light text-gray-400">overall progress</p>
@@ -162,7 +162,7 @@ export function StrengthProgressChart({ workouts }: StrengthProgressChartProps) 
         </div>
       </CardHeader>
       <CardContent>
-        <div className="h-72">
+        <div className="h-56 sm:h-72">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={progressData}>
               <defs>

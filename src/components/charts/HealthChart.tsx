@@ -76,29 +76,29 @@ export function HealthChart({ data }: HealthChartProps) {
     <div className="space-y-6">
       {/* Stats Summary */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
           <Card>
-            <CardContent className="text-center py-4">
-              <p className="text-2xl font-light text-blue-500">{stats.avgSteps.toLocaleString()}</p>
-              <p className="text-sm font-light text-gray-400">Avg Steps (7d)</p>
+            <CardContent className="text-center py-3 sm:py-4">
+              <p className="text-lg sm:text-2xl font-light text-blue-500">{stats.avgSteps.toLocaleString()}</p>
+              <p className="text-xs sm:text-sm font-light text-gray-400">Avg Steps (7d)</p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="text-center py-4">
-              <p className="text-2xl font-light text-orange-500">{stats.avgCalories}</p>
-              <p className="text-sm font-light text-gray-400">Avg Active Cal</p>
+            <CardContent className="text-center py-3 sm:py-4">
+              <p className="text-lg sm:text-2xl font-light text-orange-500">{stats.avgCalories}</p>
+              <p className="text-xs sm:text-sm font-light text-gray-400">Avg Active Cal</p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="text-center py-4">
-              <p className="text-2xl font-light text-purple-500">{stats.avgSleep}h</p>
-              <p className="text-sm font-light text-gray-400">Avg Sleep</p>
+            <CardContent className="text-center py-3 sm:py-4">
+              <p className="text-lg sm:text-2xl font-light text-purple-500">{stats.avgSleep}h</p>
+              <p className="text-xs sm:text-sm font-light text-gray-400">Avg Sleep</p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="text-center py-4">
-              <p className="text-2xl font-light text-red-400">{stats.avgHR || '–'}</p>
-              <p className="text-sm font-light text-gray-400">Resting HR</p>
+            <CardContent className="text-center py-3 sm:py-4">
+              <p className="text-lg sm:text-2xl font-light text-red-400">{stats.avgHR || '–'}</p>
+              <p className="text-xs sm:text-sm font-light text-gray-400">Resting HR</p>
             </CardContent>
           </Card>
         </div>
@@ -110,7 +110,7 @@ export function HealthChart({ data }: HealthChartProps) {
           <CardTitle>Activity (Last 30 Days)</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-64">
+          <div className="h-48 sm:h-64">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData}>
                 <defs>
@@ -170,7 +170,7 @@ export function HealthChart({ data }: HealthChartProps) {
           <CardTitle>Recovery Metrics</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-64">
+          <div className="h-48 sm:h-64">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />

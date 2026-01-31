@@ -17,3 +17,12 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 400;
   color: rgb(55, 65, 81);
 }
+
+/* Hide scrollbar but keep functionality */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}

@@ -207,10 +207,10 @@ export function Insights({ workouts, inBodyEntries }: InsightsProps) {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
             <div>
               <CardTitle>Training Insights</CardTitle>
-              <p className="text-sm font-light text-gray-400 mt-1">
+              <p className="text-xs sm:text-sm font-light text-gray-400 mt-1">
                 Personalized recommendations based on your data
               </p>
             </div>
@@ -219,6 +219,7 @@ export function Insights({ workouts, inBodyEntries }: InsightsProps) {
               disabled={loading}
               variant="outline"
               size="sm"
+              className="w-full sm:w-auto"
             >
               {loading ? 'Analyzing...' : '✨ AI Analysis'}
             </Button>

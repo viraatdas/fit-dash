@@ -90,18 +90,18 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <header className="bg-white border-b border-gray-100 sticky top-0 z-10">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
           <div className="flex justify-between items-center">
-            <h1 className="text-2xl font-light text-gray-500 tracking-wide">Fitness Dashboard</h1>
-            <Button onClick={fetchWorkouts} disabled={loading} variant="outline">
-              {loading ? 'Loading...' : 'Refresh'}
+            <h1 className="text-lg sm:text-2xl font-light text-gray-500 tracking-wide">Fitness Dashboard</h1>
+            <Button onClick={fetchWorkouts} disabled={loading} variant="outline" size="sm">
+              {loading ? '...' : 'Refresh'}
             </Button>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-lg text-red-600 font-light">
             {error}

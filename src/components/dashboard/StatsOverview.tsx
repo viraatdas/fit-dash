@@ -55,14 +55,14 @@ export function StatsOverview({ workouts, latestInBody }: StatsOverviewProps) {
   }
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-4">
       {stats.map((stat) => (
         <Card key={stat.label}>
-          <CardContent className="text-center py-4">
-            <p className="text-2xl font-light text-gray-700">{stat.value}</p>
-            <p className="text-sm font-light text-gray-400">{stat.label}</p>
+          <CardContent className="text-center py-3 sm:py-4 px-2 sm:px-4">
+            <p className="text-lg sm:text-2xl font-light text-gray-700">{stat.value}</p>
+            <p className="text-xs sm:text-sm font-light text-gray-400">{stat.label}</p>
             {stat.subtext && (
-              <p className="text-xs font-light text-gray-300 mt-1">{stat.subtext}</p>
+              <p className="text-[10px] sm:text-xs font-light text-gray-300 mt-1">{stat.subtext}</p>
             )}
           </CardContent>
         </Card>
