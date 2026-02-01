@@ -4,6 +4,12 @@ export interface HealthMetric {
   unit: string;
 }
 
+export interface HourlyHeartRate {
+  hour: number; // 0-23
+  heartRate: number;
+  readings?: number;
+}
+
 export interface DailyHealth {
   date: string;
   steps?: number;
@@ -16,6 +22,7 @@ export interface DailyHealth {
   flightsClimbed?: number;
   exerciseMinutes?: number;
   standHours?: number;
+  hourlyHeartRate?: HourlyHeartRate[];
 }
 
 export interface HealthData {
