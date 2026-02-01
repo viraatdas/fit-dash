@@ -5,6 +5,14 @@ import { normalizeExercise } from '../exercise/normalizer';
 
 interface RichText {
   plain_text: string;
+  type?: string;
+  mention?: {
+    type: string;
+    date?: {
+      start: string;
+      end?: string | null;
+    };
+  };
 }
 
 interface NotionBlock {
@@ -36,11 +44,41 @@ function getBlockText(block: NotionBlock): string {
 }
 
 /**
- * Parse set string like "1x10 - 85" or "2x10 - 100"
- * Format: {set_number}x{reps} - {weight}
+ * Extract date from Notion date mention (@Today, @Thursday, etc.)
+ */
+function getDateFromMention(block: NotionBlock): Date | null {
+  const type = block.type as keyof NotionBlock;
+  const content = block[type];
+
+  if (content && typeof content === 'object' && 'rich_text' in content) {
+    const richText = content.rich_text as RichText[];
+    for (const rt of richText) {
+      if (rt.type === 'mention' && rt.mention?.type === 'date' && rt.mention.date?.start) {
+        return new Date(rt.mention.date.start);
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Parse set string like "1x10 - 85" or "2x10 - 100" or "1x5 - 35x2"
+ * Format: {set_number}x{reps} - {weight} or {weight}x{multiplier}
  */
 function parseSetString(setStr: string): ExerciseSet | null {
   const cleaned = setStr.trim();
+
+  // Pattern: "1x10 - 85x2" or "1x5 - 35x2" (weight with multiplier for per-side notation)
+  const matchWithMultiplier = cleaned.match(/^\d+\s*x\s*(\d+)\s*[-–—]\s*(\d+(?:\.\d+)?)\s*x\s*(\d+)/i);
+  if (matchWithMultiplier) {
+    const weightPerSide = parseFloat(matchWithMultiplier[2]);
+    const multiplier = parseInt(matchWithMultiplier[3]);
+    return {
+      reps: parseInt(matchWithMultiplier[1]),
+      weight: weightPerSide * multiplier,
+    };
+  }
 
   // Pattern: "1x10 - 85" or "2x10 - 100" or "1x10- 85" or "1x10 -85"
   const match = cleaned.match(/^\d+\s*x\s*(\d+)\s*[-–—]\s*(\d+(?:\.\d+)?)/i);
@@ -118,6 +156,23 @@ export function parseNotionPage(blocks: NotionBlock[]): Workout[] {
     if (block.type === 'bulleted_list_item') continue;
 
     // Check if this is a date block (paragraph or heading with date)
+    // First check for Notion date mentions (@Today, @Thursday, etc.)
+    const mentionDate = getDateFromMention(block);
+    if (mentionDate) {
+      // Save previous workout if exists and has exercises
+      if (currentWorkout && currentWorkout.exercises.length > 0) {
+        workouts.push(currentWorkout);
+      }
+      // Start new workout
+      currentWorkout = {
+        id: uuidv4(),
+        date: mentionDate,
+        exercises: [],
+      };
+      continue;
+    }
+
+    // Then check for text-based dates
     if ((block.type === 'paragraph' || block.type.startsWith('heading')) && isDateText(trimmedText)) {
       const date = extractDateFromLine(trimmedText);
       if (date) {
