@@ -123,7 +123,15 @@ function processHealthExportData(payload: unknown): DailyHealth[] {
 
     // Process each field
     for (const [key, value] of Object.entries(entry)) {
-      if (key === 'date' || typeof value !== 'number') continue;
+      if (key === 'date') continue;
+
+      // Handle hourlyHeartRate array
+      if (key === 'hourlyHeartRate' && Array.isArray(value)) {
+        daily.hourlyHeartRate = value;
+        continue;
+      }
+
+      if (typeof value !== 'number') continue;
 
       const metricKey = normalizeMetricName(key) || key as keyof DailyHealth;
       if (metricKey === 'date') continue;
@@ -290,7 +298,16 @@ export async function POST(request: Request) {
           // Accumulate sum fields, update others
           const merged: DailyHealth = { ...existing };
           for (const [key, value] of Object.entries(d)) {
-            if (key === 'date' || value === undefined || value === 0) continue;
+            if (key === 'date' || value === undefined) continue;
+
+            // Handle hourlyHeartRate array - replace with new data
+            if (key === 'hourlyHeartRate' && Array.isArray(value)) {
+              merged.hourlyHeartRate = value;
+              continue;
+            }
+
+            if (value === 0) continue;
+
             if (SUM_FIELDS.includes(key)) {
               // Accumulate these fields
               (merged as unknown as Record<string, number>)[key] =
