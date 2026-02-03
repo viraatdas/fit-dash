@@ -309,70 +309,172 @@ export function HealthChart({ data, onDataUpdate }: HealthChartProps) {
         </CardContent>
       </Card>
 
-      {/* Intraday Heart Rate Chart */}
+      {/* Heart Rate Over Time - All Days */}
       {data.some(d => d.hourlyHeartRate && d.hourlyHeartRate.length > 0) && (
-        <Card>
-          <CardHeader>
-            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
-              <CardTitle>Heart Rate Throughout Day</CardTitle>
-              <select
-                value={selectedDay || data.find(d => d.hourlyHeartRate?.length)?.date || ''}
-                onChange={(e) => setSelectedDay(e.target.value)}
-                className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white"
-              >
-                {data.filter(d => d.hourlyHeartRate?.length).map(d => (
-                  <option key={d.date} value={d.date}>
-                    {format(parseISO(d.date), 'MMM d, yyyy')}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="h-48 sm:h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart
-                  data={(() => {
-                    const dayData = data.find(d => d.date === (selectedDay || data.find(d => d.hourlyHeartRate?.length)?.date));
-                    return (dayData?.hourlyHeartRate || []).map(hr => ({
-                      ...hr,
-                      time: `${hr.hour.toString().padStart(2, '0')}:00`,
-                    }));
-                  })()}
+        <>
+          {/* Daily Heart Rate Summary Chart */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Heart Rate Trends</CardTitle>
+              <p className="text-xs text-gray-400 mt-1">Daily average, min, and max heart rate</p>
+            </CardHeader>
+            <CardContent>
+              <div className="h-48 sm:h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart
+                    data={data
+                      .filter(d => d.hourlyHeartRate && d.hourlyHeartRate.length > 0)
+                      .slice(0, 30)
+                      .reverse()
+                      .map(d => {
+                        const hrs = d.hourlyHeartRate!.map(h => h.heartRate);
+                        return {
+                          date: format(parseISO(d.date), 'MMM d'),
+                          fullDate: format(parseISO(d.date), 'MMM d, yyyy'),
+                          avg: Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length),
+                          min: Math.min(...hrs),
+                          max: Math.max(...hrs),
+                          resting: d.restingHeartRate,
+                        };
+                      })}
+                  >
+                    <defs>
+                      <linearGradient id="hrRangeGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2} />
+                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0.05} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="date" stroke="#9ca3af" fontSize={10} tickLine={false} />
+                    <YAxis
+                      stroke="#9ca3af"
+                      fontSize={10}
+                      tickLine={false}
+                      domain={[40, 180]}
+                    />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '12px' }}
+                      labelFormatter={(_, payload) => payload?.[0]?.payload?.fullDate || ''}
+                      formatter={(value, name) => {
+                        const labels: Record<string, string> = {
+                          max: 'Max HR',
+                          avg: 'Avg HR',
+                          min: 'Min HR',
+                          resting: 'Resting HR',
+                        };
+                        return [`${value} bpm`, labels[name as string] || name];
+                      }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: '11px' }} />
+                    <Area
+                      type="monotone"
+                      dataKey="max"
+                      name="Max"
+                      fill="url(#hrRangeGradient)"
+                      stroke="#ef4444"
+                      strokeWidth={1}
+                      strokeDasharray="3 3"
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="avg"
+                      name="Average"
+                      stroke="#ef4444"
+                      strokeWidth={2}
+                      dot={{ r: 3, fill: '#ef4444' }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="min"
+                      name="Min"
+                      stroke="#fca5a5"
+                      strokeWidth={1}
+                      dot={false}
+                    />
+                    {data.some(d => d.restingHeartRate) && (
+                      <Line
+                        type="monotone"
+                        dataKey="resting"
+                        name="Resting"
+                        stroke="#10b981"
+                        strokeWidth={2}
+                        dot={{ r: 2, fill: '#10b981' }}
+                        connectNulls
+                      />
+                    )}
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Detailed Intraday View for Selected Day */}
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
+                <div>
+                  <CardTitle>Hourly Heart Rate</CardTitle>
+                  <p className="text-xs text-gray-400 mt-1">Heart rate throughout a specific day</p>
+                </div>
+                <select
+                  value={selectedDay || data.find(d => d.hourlyHeartRate?.length)?.date || ''}
+                  onChange={(e) => setSelectedDay(e.target.value)}
+                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white"
                 >
-                  <defs>
-                    <linearGradient id="hrGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="time" stroke="#9ca3af" fontSize={10} tickLine={false} />
-                  <YAxis
-                    stroke="#9ca3af"
-                    fontSize={10}
-                    tickLine={false}
-                    domain={[50, 160]}
-                    tickFormatter={(v) => `${v}`}
-                  />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '12px' }}
-                    formatter={(value) => [`${value} bpm`, 'Heart Rate']}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="heartRate"
-                    name="Heart Rate"
-                    fill="url(#hrGradient)"
-                    stroke="#ef4444"
-                    strokeWidth={2}
-                    dot={{ r: 3, fill: '#ef4444' }}
-                  />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
+                  {data.filter(d => d.hourlyHeartRate?.length).map(d => (
+                    <option key={d.date} value={d.date}>
+                      {format(parseISO(d.date), 'MMM d, yyyy')}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="h-48 sm:h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart
+                    data={(() => {
+                      const dayData = data.find(d => d.date === (selectedDay || data.find(d => d.hourlyHeartRate?.length)?.date));
+                      return (dayData?.hourlyHeartRate || []).map(hr => ({
+                        ...hr,
+                        time: `${hr.hour.toString().padStart(2, '0')}:00`,
+                      }));
+                    })()}
+                  >
+                    <defs>
+                      <linearGradient id="hrGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                    <XAxis dataKey="time" stroke="#9ca3af" fontSize={10} tickLine={false} />
+                    <YAxis
+                      stroke="#9ca3af"
+                      fontSize={10}
+                      tickLine={false}
+                      domain={[50, 160]}
+                      tickFormatter={(v) => `${v}`}
+                    />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '12px' }}
+                      formatter={(value) => [`${value} bpm`, 'Heart Rate']}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="heartRate"
+                      name="Heart Rate"
+                      fill="url(#hrGradient)"
+                      stroke="#ef4444"
+                      strokeWidth={2}
+                      dot={{ r: 3, fill: '#ef4444' }}
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </>
       )}
     </div>
   );

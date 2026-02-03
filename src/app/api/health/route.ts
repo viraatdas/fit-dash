@@ -91,8 +91,26 @@ function extractDate(dateStr: string): string | null {
 // Fields that should be summed vs averaged vs max
 const SUM_FIELDS = ['steps', 'activeCalories', 'walkingDistance', 'flightsClimbed', 'exerciseMinutes', 'standHours'];
 
+// Extract hour from datetime string like "2026-01-30 14:32:00 -0800"
+function extractHour(dateStr: string): number | null {
+  // Match HH:MM:SS pattern
+  const match = dateStr.match(/(\d{2}):(\d{2}):\d{2}/);
+  if (match) return parseInt(match[1]);
+
+  // Match ISO format
+  if (dateStr.includes('T')) {
+    const timePart = dateStr.split('T')[1];
+    if (timePart) return parseInt(timePart.substring(0, 2));
+  }
+
+  return null;
+}
+
 function processHealthExportData(payload: unknown): DailyHealth[] {
-  const dailyMap = new Map<string, DailyHealth & { _counts: Record<string, number> }>();
+  const dailyMap = new Map<string, DailyHealth & {
+    _counts: Record<string, number>;
+    _hourlyHR: Map<number, { sum: number; count: number }>;
+  }>();
 
   // Handle both formats: { data: { metrics: [...] } } or direct array
   let dataArray: Record<string, unknown>[] = [];
@@ -109,14 +127,14 @@ function processHealthExportData(payload: unknown): DailyHealth[] {
     }
   }
 
-  // Process flat array of per-minute data
+  // Process flat array of per-sample data
   for (const entry of dataArray) {
     const dateStr = entry.date as string;
     const date = extractDate(dateStr);
     if (!date) continue;
 
     if (!dailyMap.has(date)) {
-      dailyMap.set(date, { date, _counts: {} });
+      dailyMap.set(date, { date, _counts: {}, _hourlyHR: new Map() });
     }
 
     const daily = dailyMap.get(date)!;
@@ -125,7 +143,7 @@ function processHealthExportData(payload: unknown): DailyHealth[] {
     for (const [key, value] of Object.entries(entry)) {
       if (key === 'date') continue;
 
-      // Handle hourlyHeartRate array
+      // Handle pre-built hourlyHeartRate array
       if (key === 'hourlyHeartRate' && Array.isArray(value)) {
         daily.hourlyHeartRate = value;
         continue;
@@ -136,23 +154,35 @@ function processHealthExportData(payload: unknown): DailyHealth[] {
       const metricKey = normalizeMetricName(key) || key as keyof DailyHealth;
       if (metricKey === 'date') continue;
 
+      // Special handling for heart_rate - aggregate into hourly buckets
+      if (key === 'heart_rate' || key === 'heartRate') {
+        const hour = extractHour(dateStr);
+        if (hour !== null) {
+          const hourData = daily._hourlyHR.get(hour) || { sum: 0, count: 0 };
+          hourData.sum += value;
+          hourData.count += 1;
+          daily._hourlyHR.set(hour, hourData);
+        }
+        continue;
+      }
+
       const currentValue = (daily as unknown as Record<string, number>)[metricKey] || 0;
 
       if (SUM_FIELDS.includes(metricKey)) {
         // Sum these fields
         (daily as unknown as Record<string, number>)[metricKey] = currentValue + value;
       } else {
-        // Average these fields (like heart rate)
+        // Average these fields
         daily._counts[metricKey] = (daily._counts[metricKey] || 0) + 1;
         (daily as unknown as Record<string, number>)[metricKey] = currentValue + value;
       }
     }
   }
 
-  // Finalize averages and clean up
+  // Finalize averages, build hourly HR, and clean up
   const results: DailyHealth[] = [];
   dailyMap.forEach((daily) => {
-    const { _counts, ...data } = daily;
+    const { _counts, _hourlyHR, ...data } = daily;
 
     // Calculate averages for non-sum fields
     Object.entries(_counts).forEach(([key, count]) => {
@@ -161,6 +191,17 @@ function processHealthExportData(payload: unknown): DailyHealth[] {
           Math.round((data as unknown as Record<string, number>)[key] / count);
       }
     });
+
+    // Build hourlyHeartRate array from collected samples
+    if (_hourlyHR.size > 0 && !data.hourlyHeartRate) {
+      data.hourlyHeartRate = Array.from(_hourlyHR.entries())
+        .map(([hour, { sum, count }]) => ({
+          hour,
+          heartRate: Math.round(sum / count),
+          readings: count,
+        }))
+        .sort((a, b) => a.hour - b.hour);
+    }
 
     // Round values
     if (data.steps) data.steps = Math.round(data.steps);
@@ -241,8 +282,46 @@ function processMetricsFormat(payload: HealthAutoExportPayload): DailyHealth[] {
   return results.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
-// GET - Retrieve stored health data
-export async function GET() {
+// DELETE - Clear all health data (to fix corrupted data)
+export async function DELETE(request: Request) {
+  // Optional: Verify webhook secret
+  const authHeader = request.headers.get('authorization');
+  if (WEBHOOK_SECRET && authHeader !== `Bearer ${WEBHOOK_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const redis = getRedis();
+  if (redis) {
+    try {
+      await redis.del(REDIS_KEY);
+      healthDataCache = [];
+      lastUpdatedCache = null;
+      return NextResponse.json({ success: true, message: 'Health data cleared' });
+    } catch (err) {
+      console.error('Failed to clear Redis:', err);
+      return NextResponse.json({ error: 'Failed to clear data' }, { status: 500 });
+    }
+  }
+
+  healthDataCache = [];
+  lastUpdatedCache = null;
+  return NextResponse.json({ success: true, message: 'Health data cleared (in-memory only)' });
+}
+
+// GET - Retrieve stored health data (add ?debug=1 to see last payload format)
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const debug = url.searchParams.get('debug');
+
+  // Return debug info about last received payload
+  if (debug === '1') {
+    return NextResponse.json({
+      success: true,
+      lastPayload: lastPayloadDebug,
+      message: 'This shows the format of the last received payload from Health Auto Export',
+    });
+  }
+
   // Load from blob if cache is empty
   if (healthDataCache === null) {
     const loaded = await loadFromStore();
@@ -257,6 +336,9 @@ export async function GET() {
   });
 }
 
+// GET debug info about last received payload
+let lastPayloadDebug: { timestamp: string; format: string; sampleKeys: string[]; sampleData: unknown; totalItems: number } | null = null;
+
 // POST - Receive health data from Health Auto Export app
 export async function POST(request: Request) {
   try {
@@ -270,6 +352,49 @@ export async function POST(request: Request) {
     }
 
     const payload = await request.json();
+
+    // Debug: Capture payload format info
+    let format = 'unknown';
+    let sampleKeys: string[] = [];
+    let sampleData: unknown = null;
+    let totalItems = 0;
+
+    if (Array.isArray(payload)) {
+      format = 'array';
+      totalItems = payload.length;
+      if (payload[0]) {
+        sampleKeys = Object.keys(payload[0]);
+        sampleData = payload[0];
+      }
+    } else if (payload && typeof payload === 'object') {
+      const p = payload as Record<string, unknown>;
+      if (Array.isArray(p.data)) {
+        format = 'object_with_data_array';
+        totalItems = p.data.length;
+        if (p.data[0]) {
+          sampleKeys = Object.keys(p.data[0] as object);
+          sampleData = p.data[0];
+        }
+      } else if (p.data && typeof p.data === 'object' && Array.isArray((p.data as Record<string, unknown>).metrics)) {
+        format = 'metrics_format';
+        const metrics = (p.data as Record<string, unknown>).metrics as Array<{ name: string }>;
+        sampleKeys = metrics.map(m => m.name);
+        totalItems = metrics.length;
+      } else {
+        format = 'object_other';
+        sampleKeys = Object.keys(p);
+        sampleData = p;
+      }
+    }
+
+    lastPayloadDebug = {
+      timestamp: new Date().toISOString(),
+      format,
+      sampleKeys,
+      sampleData,
+      totalItems,
+    };
+    console.log('Health API received:', JSON.stringify(lastPayloadDebug));
 
     // Process the data
     const processedData = processHealthExportData(payload);
@@ -291,11 +416,12 @@ export async function POST(request: Request) {
         dataMap.set(date, { ...d, date });
       }
 
-      // Merge new data - accumulate values for same date
+      // Merge new data - REPLACE values for same date (don't accumulate)
+      // Health Auto Export sends full daily totals, not incremental data
       for (const d of processedData) {
         const existing = dataMap.get(d.date);
         if (existing) {
-          // Accumulate sum fields, update others
+          // Merge: keep existing values, but replace with new non-zero values
           const merged: DailyHealth = { ...existing };
           for (const [key, value] of Object.entries(d)) {
             if (key === 'date' || value === undefined) continue;
@@ -306,16 +432,11 @@ export async function POST(request: Request) {
               continue;
             }
 
+            // Skip zero values (means no data, keep existing)
             if (value === 0) continue;
 
-            if (SUM_FIELDS.includes(key)) {
-              // Accumulate these fields
-              (merged as unknown as Record<string, number>)[key] =
-                ((existing as unknown as Record<string, number>)[key] || 0) + (value as number);
-            } else {
-              // Replace these fields (like heart rate - take latest)
-              (merged as unknown as Record<string, number>)[key] = value as number;
-            }
+            // Replace with new value (don't accumulate)
+            (merged as unknown as Record<string, number>)[key] = value as number;
           }
           dataMap.set(d.date, merged);
         } else {

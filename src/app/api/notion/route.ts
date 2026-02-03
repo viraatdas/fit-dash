@@ -17,6 +17,8 @@ export async function GET() {
     const pageId = getPageId();
 
     // Fetch all top-level blocks from the page
+    // IMPORTANT: Use page_size <= 30 to get blocks in creation time order (newest first)
+    // Larger page sizes return blocks in document position order, which may not show recent entries
     const blocks: NotionBlock[] = [];
     let cursor: string | undefined;
 
@@ -24,7 +26,7 @@ export async function GET() {
       const response = await notion.blocks.children.list({
         block_id: pageId,
         start_cursor: cursor,
-        page_size: 100,
+        page_size: 30,
       });
 
       blocks.push(...(response.results as NotionBlock[]));
@@ -50,8 +52,8 @@ export async function GET() {
       }
     }
 
-    // Parse blocks into workouts
-    const workouts = parseNotionPage(blocksWithChildren);
+    // Parse blocks into workouts (async for LLM-based parsing of complex notation)
+    const workouts = await parseNotionPage(blocksWithChildren);
 
     return NextResponse.json({
       success: true,
