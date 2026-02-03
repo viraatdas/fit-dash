@@ -250,64 +250,91 @@ export function HealthChart({ data, onDataUpdate }: HealthChartProps) {
         </CardContent>
       </Card>
 
-      {/* Heart Rate & Sleep Chart */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Recovery Metrics</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-48 sm:h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="date" stroke="#9ca3af" fontSize={10} tickLine={false} />
-                <YAxis
-                  yAxisId="hr"
-                  stroke="#9ca3af"
-                  fontSize={10}
-                  tickLine={false}
-                  domain={[40, 80]}
-                />
-                <YAxis
-                  yAxisId="sleep"
-                  orientation="right"
-                  stroke="#9ca3af"
-                  fontSize={10}
-                  tickLine={false}
-                  domain={[0, 10]}
-                />
-                <Tooltip
-                  contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '12px' }}
-                  formatter={(value, name) => {
-                    if (name === 'sleepHours') return [`${value}h`, 'Sleep'];
-                    if (name === 'restingHeartRate') return [`${value} bpm`, 'Resting HR'];
-                    return [value, name];
-                  }}
-                />
-                <Legend wrapperStyle={{ fontSize: '11px' }} />
-                <Bar
-                  yAxisId="sleep"
-                  dataKey="sleepHours"
-                  name="Sleep"
-                  fill="#8b5cf6"
-                  radius={[4, 4, 0, 0]}
-                  maxBarSize={20}
-                />
-                <Line
-                  yAxisId="hr"
-                  type="monotone"
-                  dataKey="restingHeartRate"
-                  name="Resting HR"
-                  stroke="#ef4444"
-                  strokeWidth={2}
-                  dot={{ r: 3 }}
-                  connectNulls
-                />
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Resting Heart Rate Chart */}
+      {chartData.some(d => d.restingHeartRate) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Resting Heart Rate</CardTitle>
+            <p className="text-xs text-gray-400 mt-1">Lower is generally better - indicates cardiovascular fitness</p>
+          </CardHeader>
+          <CardContent>
+            <div className="h-48 sm:h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={chartData}>
+                  <defs>
+                    <linearGradient id="hrGradientResting" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0.05} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="date" stroke="#9ca3af" fontSize={10} tickLine={false} />
+                  <YAxis
+                    stroke="#9ca3af"
+                    fontSize={10}
+                    tickLine={false}
+                    domain={[50, 80]}
+                    tickFormatter={(v) => `${v}`}
+                  />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '12px' }}
+                    formatter={(value) => [`${value} bpm`, 'Resting HR']}
+                    labelFormatter={(_, payload) => payload?.[0]?.payload?.fullDate || ''}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="restingHeartRate"
+                    name="Resting HR"
+                    fill="url(#hrGradientResting)"
+                    stroke="#ef4444"
+                    strokeWidth={2}
+                    dot={{ r: 4, fill: '#ef4444', strokeWidth: 2, stroke: '#fff' }}
+                    connectNulls
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Sleep Chart */}
+      {chartData.some(d => d.sleepHours) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Sleep</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-48 sm:h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                  <XAxis dataKey="date" stroke="#9ca3af" fontSize={10} tickLine={false} />
+                  <YAxis
+                    stroke="#9ca3af"
+                    fontSize={10}
+                    tickLine={false}
+                    domain={[0, 10]}
+                    tickFormatter={(v) => `${v}h`}
+                  />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '12px' }}
+                    formatter={(value) => [`${value}h`, 'Sleep']}
+                    labelFormatter={(_, payload) => payload?.[0]?.payload?.fullDate || ''}
+                  />
+                  <Bar
+                    dataKey="sleepHours"
+                    name="Sleep"
+                    fill="#8b5cf6"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={30}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Heart Rate Over Time - All Days */}
       {data.some(d => d.hourlyHeartRate && d.hourlyHeartRate.length > 0) && (
