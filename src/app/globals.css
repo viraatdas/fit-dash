@@ -2,20 +2,69 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap');
+
+/* Light mode (default) */
 :root {
-  --foreground-rgb: 75, 85, 99;
-  --background-rgb: 249, 250, 251;
+  --n-black: #F5F5F5;
+  --n-surface: #FFFFFF;
+  --n-surface-raised: #F0F0F0;
+  --n-border: #E8E8E8;
+  --n-border-visible: #CCCCCC;
+  --n-text-disabled: #999999;
+  --n-text-secondary: #666666;
+  --n-text-primary: #1A1A1A;
+  --n-text-display: #000000;
+  --n-accent: #D71921;
+  --n-accent-subtle: rgba(215, 25, 33, 0.1);
+  --n-success: #4A9E5C;
+  --n-warning: #D4A843;
+  --n-interactive: #007AFF;
+
+  /* Chart colors for light mode */
+  --chart-grid: #E8E8E8;
+  --chart-axis: #999999;
+  --chart-tooltip-bg: #FFFFFF;
+  --chart-tooltip-border: #CCCCCC;
+}
+
+/* Dark mode */
+.dark {
+  --n-black: #000000;
+  --n-surface: #111111;
+  --n-surface-raised: #1A1A1A;
+  --n-border: #222222;
+  --n-border-visible: #333333;
+  --n-text-disabled: #666666;
+  --n-text-secondary: #999999;
+  --n-text-primary: #E8E8E8;
+  --n-text-display: #FFFFFF;
+  --n-accent: #D71921;
+  --n-accent-subtle: rgba(215, 25, 33, 0.15);
+  --n-success: #4A9E5C;
+  --n-warning: #D4A843;
+  --n-interactive: #5B9BF6;
+
+  --chart-grid: #222222;
+  --chart-axis: #666666;
+  --chart-tooltip-bg: #111111;
+  --chart-tooltip-border: #333333;
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: rgb(var(--background-rgb));
-  font-weight: 300;
+  color: var(--n-text-primary);
+  background: var(--n-black);
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s ease, color 0.2s ease;
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-weight: 400;
-  color: rgb(55, 65, 81);
+  font-weight: 500;
+  color: var(--n-text-display);
+  letter-spacing: -0.01em;
 }
 
 /* Hide scrollbar but keep functionality */
@@ -25,4 +74,59 @@ h1, h2, h3, h4, h5, h6 {
 }
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
+}
+
+/* Recharts overrides */
+.recharts-text {
+  fill: var(--n-text-secondary) !important;
+  font-family: 'Space Mono', monospace !important;
+  font-size: 10px !important;
+}
+
+.recharts-legend-item-text {
+  color: var(--n-text-secondary) !important;
+  font-family: 'Space Mono', monospace !important;
+  font-size: 11px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.recharts-cartesian-grid line {
+  stroke: var(--chart-grid) !important;
+}
+
+.recharts-default-tooltip {
+  background-color: var(--chart-tooltip-bg) !important;
+  border: 1px solid var(--chart-tooltip-border) !important;
+  border-radius: 8px !important;
+}
+
+.recharts-tooltip-label {
+  color: var(--n-text-display) !important;
+  font-family: 'Space Mono', monospace !important;
+}
+
+.recharts-tooltip-item {
+  color: var(--n-text-primary) !important;
+  font-family: 'Space Mono', monospace !important;
+}
+
+/* Select/dropdown styling */
+select option {
+  background-color: var(--n-surface);
+  color: var(--n-text-primary);
+  padding: 8px 12px;
+}
+
+select option:checked {
+  background-color: var(--n-surface-raised);
+}
+
+/* Date input styling */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: var(--calendar-filter, none);
+}
+
+.dark input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
 }

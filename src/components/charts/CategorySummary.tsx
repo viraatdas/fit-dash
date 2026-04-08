@@ -17,12 +17,12 @@ interface CategorySummaryProps {
 }
 
 const COLORS: Record<ExerciseCategory, string> = {
-  'Upper Body': '#3b82f6',
-  'Lower Body': '#10b981',
-  'Back': '#f59e0b',
-  'Core': '#ef4444',
-  'Cardio': '#8b5cf6',
-  'Other': '#6b7280',
+  'Upper Body': '#E8E8E8',
+  'Lower Body': '#4A9E5C',
+  'Back': '#D4A843',
+  'Core': '#D71921',
+  'Cardio': '#5B9BF6',
+  'Other': '#666666',
 };
 
 export function CategorySummary({ workouts }: CategorySummaryProps) {
@@ -54,11 +54,9 @@ export function CategorySummary({ workouts }: CategorySummaryProps) {
   if (categoryData.length === 0) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle>Category Breakdown</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle>Category Breakdown</CardTitle></CardHeader>
         <CardContent>
-          <p className="text-gray-500">No exercise data available</p>
+          <p className="font-mono text-xs text-n-text-disabled uppercase tracking-[0.04em]">[NO DATA]</p>
         </CardContent>
       </Card>
     );
@@ -66,9 +64,7 @@ export function CategorySummary({ workouts }: CategorySummaryProps) {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Category Breakdown</CardTitle>
-      </CardHeader>
+      <CardHeader><CardTitle>Category Breakdown</CardTitle></CardHeader>
       <CardContent>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
@@ -79,22 +75,19 @@ export function CategorySummary({ workouts }: CategorySummaryProps) {
                 cy="50%"
                 innerRadius={60}
                 outerRadius={80}
-                paddingAngle={5}
+                paddingAngle={3}
                 dataKey="value"
+                stroke="#000000"
+                strokeWidth={2}
               >
                 {categoryData.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={entry.color} />
                 ))}
               </Pie>
               <Tooltip
-                contentStyle={{
-                  backgroundColor: 'white',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '8px',
-                }}
-                formatter={(value) => [`${value} exercises`, 'Count']}
+                formatter={(value) => [`${value}`, 'COUNT']}
               />
-              <Legend />
+              <Legend wrapperStyle={{ fontSize: '10px', fontFamily: 'Space Mono' }} />
             </PieChart>
           </ResponsiveContainer>
         </div>

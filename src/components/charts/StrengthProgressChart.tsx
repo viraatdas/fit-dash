@@ -12,7 +12,6 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
-  ReferenceLine,
 } from 'recharts';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui';
 import { Workout } from '@/types';
@@ -32,7 +31,6 @@ interface ProgressDataPoint {
   trendLine: number;
 }
 
-// Normalize exercise names to canonical forms for grouping
 function normalizeForGrouping(name: string): string {
   const lower = name.toLowerCase();
   if (lower.includes('chest') || lower.includes('bench')) return 'chestPress';
@@ -42,18 +40,23 @@ function normalizeForGrouping(name: string): string {
   return '';
 }
 
-// Calculate estimated 1RM using Brzycki formula
 function calculate1RM(weight: number, reps: number): number {
   if (reps === 0 || weight === 0) return 0;
   if (reps === 1) return weight;
   return Math.round(weight * (36 / (37 - reps)));
 }
 
+const CHART_COLORS = {
+  primary: '#E8E8E8',
+  trend: '#4A9E5C',
+  chest: '#D4A843',
+  squat: '#D71921',
+  row: '#5B9BF6',
+};
+
 export function StrengthProgressChart({ workouts }: StrengthProgressChartProps) {
   const progressData = useMemo(() => {
-    // Sort workouts by date ascending
     const sorted = [...workouts].sort((a, b) => a.date.getTime() - b.date.getTime());
-
     const dataPoints: ProgressDataPoint[] = [];
 
     for (const workout of sorted) {
@@ -70,7 +73,6 @@ export function StrengthProgressChart({ workouts }: StrengthProgressChartProps) 
         const group = normalizeForGrouping(exercise.normalizedName);
         if (!group) continue;
 
-        // Find max weight from sets
         const maxSet = exercise.sets.reduce(
           (max, set) => (set.weight > max.weight ? set : max),
           { weight: 0, reps: 0 }
@@ -91,7 +93,6 @@ export function StrengthProgressChart({ workouts }: StrengthProgressChartProps) 
       }
     }
 
-    // Calculate trend line (simple linear regression)
     if (dataPoints.length >= 2) {
       const n = dataPoints.length;
       const sumX = dataPoints.reduce((sum, _, i) => sum + i, 0);
@@ -110,32 +111,24 @@ export function StrengthProgressChart({ workouts }: StrengthProgressChartProps) 
     return dataPoints;
   }, [workouts]);
 
-  // Calculate overall progress
   const progressStats = useMemo(() => {
     if (progressData.length < 2) return null;
-
-    const first = progressData[0];
-    const last = progressData[progressData.length - 1];
+    const oneYearAgo = Date.now() - 365 * 24 * 60 * 60 * 1000;
+    const recentData = progressData.filter(p => p.timestamp >= oneYearAgo);
+    if (recentData.length < 2) return null;
+    const first = recentData[0];
+    const last = recentData[recentData.length - 1];
     const change = last.avgStrength - first.avgStrength;
     const percentChange = ((change / first.avgStrength) * 100).toFixed(1);
-
-    return {
-      startAvg: first.avgStrength,
-      endAvg: last.avgStrength,
-      change,
-      percentChange,
-      isPositive: change > 0,
-    };
+    return { startAvg: first.avgStrength, endAvg: last.avgStrength, change, percentChange, isPositive: change > 0 };
   }, [progressData]);
 
   if (progressData.length === 0) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle>Strength Progress</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle>Strength Progress</CardTitle></CardHeader>
         <CardContent>
-          <p className="text-gray-400 font-light">Not enough workout data to show progress</p>
+          <p className="font-mono text-xs text-n-text-disabled uppercase tracking-[0.04em]">[NOT ENOUGH DATA]</p>
         </CardContent>
       </Card>
     );
@@ -147,16 +140,14 @@ export function StrengthProgressChart({ workouts }: StrengthProgressChartProps) 
         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-2">
           <div>
             <CardTitle>Strength Progress (Est. 1RM)</CardTitle>
-            <p className="text-xs sm:text-sm font-light text-gray-400 mt-1">
-              Normalized strength over time
-            </p>
+            <p className="text-xs text-n-text-disabled mt-1">Normalized strength over time</p>
           </div>
           {progressStats && (
             <div className="text-left sm:text-right">
-              <p className={`text-xl sm:text-2xl font-light ${progressStats.isPositive ? 'text-green-500' : 'text-red-400'}`}>
+              <p className={`text-2xl sm:text-3xl font-mono tracking-tight ${progressStats.isPositive ? 'text-n-success' : 'text-n-accent'}`}>
                 {progressStats.isPositive ? '+' : ''}{progressStats.percentChange}%
               </p>
-              <p className="text-xs font-light text-gray-400">overall progress</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-n-text-disabled">overall progress (past 1 year)</p>
             </div>
           )}
         </div>
@@ -165,99 +156,27 @@ export function StrengthProgressChart({ workouts }: StrengthProgressChartProps) 
         <div className="h-56 sm:h-72">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={progressData}>
-              <defs>
-                <linearGradient id="strengthGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-              <XAxis
-                dataKey="date"
-                stroke="#9ca3af"
-                fontSize={11}
-                tickLine={false}
-              />
-              <YAxis
-                stroke="#9ca3af"
-                fontSize={11}
-                tickLine={false}
-                tickFormatter={(value) => `${value}`}
-                label={{ value: 'Est. 1RM (lbs)', angle: -90, position: 'insideLeft', style: { fill: '#9ca3af', fontSize: 11 } }}
-              />
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="date" fontSize={10} tickLine={false} fontFamily="Space Mono" />
+              <YAxis fontSize={10} tickLine={false} fontFamily="Space Mono" />
               <Tooltip
-                contentStyle={{
-                  backgroundColor: 'white',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '8px',
-                  fontSize: '12px',
-                }}
                 formatter={(value, name) => {
-                  const labels: Record<string, string> = {
-                    chestPress: 'Chest Press',
-                    squat: 'Squat',
-                    row: 'Row',
-                    legPress: 'Leg Press',
-                    avgStrength: 'Avg Strength',
-                    trendLine: 'Trend',
-                  };
+                  const labels: Record<string, string> = { chestPress: 'CHEST', squat: 'SQUAT', row: 'ROW', legPress: 'LEG PRESS', avgStrength: 'AVG', trendLine: 'TREND' };
                   return [`${value} lbs`, labels[name as string] || name];
                 }}
               />
               <Legend
-                wrapperStyle={{ fontSize: '11px' }}
+                wrapperStyle={{ fontSize: '10px', fontFamily: 'Space Mono' }}
                 formatter={(value) => {
-                  const labels: Record<string, string> = {
-                    chestPress: 'Chest',
-                    squat: 'Squat',
-                    row: 'Row',
-                    legPress: 'Leg Press',
-                    avgStrength: 'Average',
-                    trendLine: 'Trend',
-                  };
+                  const labels: Record<string, string> = { chestPress: 'CHEST', squat: 'SQUAT', row: 'ROW', legPress: 'LEG PRESS', avgStrength: 'AVG', trendLine: 'TREND' };
                   return labels[value] || value;
                 }}
               />
-              <Area
-                type="monotone"
-                dataKey="avgStrength"
-                fill="url(#strengthGradient)"
-                stroke="#3b82f6"
-                strokeWidth={2}
-                dot={false}
-              />
-              <Line
-                type="monotone"
-                dataKey="trendLine"
-                stroke="#10b981"
-                strokeWidth={2}
-                strokeDasharray="5 5"
-                dot={false}
-              />
-              <Line
-                type="monotone"
-                dataKey="chestPress"
-                stroke="#f59e0b"
-                strokeWidth={1.5}
-                dot={{ r: 3 }}
-                connectNulls
-              />
-              <Line
-                type="monotone"
-                dataKey="squat"
-                stroke="#ef4444"
-                strokeWidth={1.5}
-                dot={{ r: 3 }}
-                connectNulls
-              />
-              <Line
-                type="monotone"
-                dataKey="row"
-                stroke="#8b5cf6"
-                strokeWidth={1.5}
-                dot={{ r: 3 }}
-                connectNulls
-              />
+              <Area type="monotone" dataKey="avgStrength" fill="rgba(0,0,0,0.05)" stroke={CHART_COLORS.primary} strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="trendLine" stroke={CHART_COLORS.trend} strokeWidth={2} strokeDasharray="5 5" dot={false} />
+              <Line type="monotone" dataKey="chestPress" stroke={CHART_COLORS.chest} strokeWidth={1.5} dot={{ r: 3 }} connectNulls />
+              <Line type="monotone" dataKey="squat" stroke={CHART_COLORS.squat} strokeWidth={1.5} dot={{ r: 3 }} connectNulls />
+              <Line type="monotone" dataKey="row" stroke={CHART_COLORS.row} strokeWidth={1.5} dot={{ r: 3 }} connectNulls />
             </ComposedChart>
           </ResponsiveContainer>
         </div>

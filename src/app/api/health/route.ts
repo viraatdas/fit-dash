@@ -1,19 +1,8 @@
 import { NextResponse } from 'next/server';
-import { Redis } from '@upstash/redis';
 import { DailyHealth, HealthAutoExportPayload } from '@/types';
+import { getRedis } from '@/lib/redis';
 
 const REDIS_KEY = 'health-data';
-
-// Initialize Redis client (lazy - only if env vars are set)
-function getRedis(): Redis | null {
-  if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
-    return new Redis({
-      url: process.env.UPSTASH_REDIS_REST_URL,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN,
-    });
-  }
-  return null;
-}
 
 // Cache for in-memory access
 let healthDataCache: DailyHealth[] | null = null;
@@ -329,11 +318,13 @@ export async function GET(request: Request) {
     lastUpdatedCache = loaded.lastUpdated;
   }
 
-  return NextResponse.json({
+  const response = NextResponse.json({
     success: true,
     lastUpdated: lastUpdatedCache,
     data: healthDataCache,
   });
+  response.headers.set('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
+  return response;
 }
 
 // GET debug info about last received payload

@@ -22,40 +22,39 @@ export function InBodyHistory({ entries, onDelete }: InBodyHistoryProps) {
       <CardContent className="p-0">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-100">
+            <thead className="border-b border-n-border-visible">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-light text-gray-400 uppercase tracking-wider">Date</th>
-                <th className="px-4 py-3 text-left text-xs font-light text-gray-400 uppercase tracking-wider">Weight</th>
-                <th className="px-4 py-3 text-left text-xs font-light text-gray-400 uppercase tracking-wider">Body Fat</th>
-                <th className="px-4 py-3 text-left text-xs font-light text-gray-400 uppercase tracking-wider">Muscle</th>
-                <th className="px-4 py-3 text-left text-xs font-light text-gray-400 uppercase tracking-wider">BMI</th>
-                <th className="px-4 py-3 text-left text-xs font-light text-gray-400 uppercase tracking-wider">Actions</th>
+                <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.08em] text-n-text-secondary">Date</th>
+                <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.08em] text-n-text-secondary">Weight</th>
+                <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.08em] text-n-text-secondary">Body Fat</th>
+                <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.08em] text-n-text-secondary">Muscle</th>
+                <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.08em] text-n-text-secondary">BMI</th>
+                <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.08em] text-n-text-secondary">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-n-border">
               {entries.map((entry) => (
-                <tr key={entry.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm font-light text-gray-600">
+                <tr key={entry.id} className="hover:bg-n-surface-raised transition-colors duration-150">
+                  <td className="px-4 py-3 font-mono text-sm text-n-text-primary">
                     {format(entry.date, 'MMM d, yyyy')}
                   </td>
-                  <td className="px-4 py-3 text-sm font-light text-gray-600">
-                    {entry.weight} lbs
+                  <td className="px-4 py-3 font-mono text-sm text-n-text-primary">
+                    {entry.weight}
                   </td>
-                  <td className="px-4 py-3 text-sm font-light text-gray-600">
+                  <td className="px-4 py-3 font-mono text-sm text-n-text-primary">
                     {entry.bodyFatPercentage}%
                   </td>
-                  <td className="px-4 py-3 text-sm font-light text-gray-600">
-                    {entry.muscleMass} lbs
+                  <td className="px-4 py-3 font-mono text-sm text-n-text-primary">
+                    {entry.muscleMass}
                   </td>
-                  <td className="px-4 py-3 text-sm font-light text-gray-600">
-                    {entry.bmi ?? '-'}
+                  <td className="px-4 py-3 font-mono text-sm text-n-text-disabled">
+                    {entry.bmi ?? '–'}
                   </td>
-                  <td className="px-4 py-3 text-sm">
+                  <td className="px-4 py-3">
                     <Button
-                      variant="ghost"
+                      variant="danger"
                       size="sm"
                       onClick={() => onDelete(entry.id)}
-                      className="text-red-400 hover:text-red-500 hover:bg-red-50"
                     >
                       Delete
                     </Button>

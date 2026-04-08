@@ -14,20 +14,20 @@ export function Button({
   disabled,
   ...props
 }: ButtonProps) {
-  const baseStyles = 'inline-flex items-center justify-center font-light rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed';
+  const baseStyles = 'inline-flex items-center justify-center font-mono text-[13px] uppercase tracking-[0.06em] rounded-pill transition-all duration-200 focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed';
 
   const variants = {
-    primary: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500',
-    secondary: 'bg-gray-100 text-gray-900 hover:bg-gray-200 focus:ring-gray-500',
-    outline: 'border border-gray-300 text-gray-700 hover:bg-gray-50 focus:ring-gray-500',
-    ghost: 'text-gray-700 hover:bg-gray-100 focus:ring-gray-500',
-    danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
+    primary: 'bg-n-text-display text-n-black hover:opacity-90',
+    secondary: 'bg-transparent border border-n-border-visible text-n-text-primary hover:border-n-text-primary',
+    outline: 'border border-n-border-visible text-n-text-primary hover:border-n-text-secondary',
+    ghost: 'text-n-text-secondary hover:text-n-text-primary',
+    danger: 'bg-transparent border border-n-accent text-n-accent hover:bg-n-accent-subtle',
   };
 
   const sizes = {
-    sm: 'px-3 py-1.5 text-sm',
-    md: 'px-4 py-2 text-sm',
-    lg: 'px-6 py-3 text-base',
+    sm: 'px-4 py-2 min-h-[36px]',
+    md: 'px-6 py-3 min-h-[44px]',
+    lg: 'px-8 py-3.5 min-h-[48px]',
   };
 
   return (

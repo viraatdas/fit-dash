@@ -1,17 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { Tabs, TabsList, TabsTrigger, TabsContent, Button } from '@/components/ui';
-import { StatsOverview, WorkoutSummary, Insights } from '@/components/dashboard';
-import {
-  WeightProgressChart,
-  CategorySummary,
-  BodyCompositionChart,
-  StrengthProgressChart,
-  BodyRecompChart,
-  HealthChart,
-} from '@/components/charts';
-import { InBodyForm, InBodyHistory } from '@/components/forms';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import { Tabs, TabsList, TabsTrigger, TabsContent, Button, ThemeToggle } from '@/components/ui';
+import { StatsOverview } from '@/components/dashboard/StatsOverview';
 import { Workout, InBodyEntry, DailyHealth } from '@/types';
 import {
   getInBodyData,
@@ -19,6 +10,54 @@ import {
   deleteInBodyEntry,
   getLatestInBodyEntry,
 } from '@/lib/storage';
+
+// Lazy load heavy components — only downloaded when their tab is active
+const WorkoutSummary = lazy(() => import('@/components/dashboard/WorkoutSummary').then(m => ({ default: m.WorkoutSummary })));
+const Insights = lazy(() => import('@/components/dashboard/Insights').then(m => ({ default: m.Insights })));
+const ProteinEstimate = lazy(() => import('@/components/dashboard/ProteinEstimate').then(m => ({ default: m.ProteinEstimate })));
+const ExerciseAdvice = lazy(() => import('@/components/dashboard/ExerciseAdvice').then(m => ({ default: m.ExerciseAdvice })));
+const StrengthProgressChart = lazy(() => import('@/components/charts/StrengthProgressChart').then(m => ({ default: m.StrengthProgressChart })));
+const WeightProgressChart = lazy(() => import('@/components/charts/WeightProgressChart').then(m => ({ default: m.WeightProgressChart })));
+const CategorySummary = lazy(() => import('@/components/charts/CategorySummary').then(m => ({ default: m.CategorySummary })));
+const BodyCompositionChart = lazy(() => import('@/components/charts/BodyCompositionChart').then(m => ({ default: m.BodyCompositionChart })));
+const BodyRecompChart = lazy(() => import('@/components/charts/BodyRecompChart').then(m => ({ default: m.BodyRecompChart })));
+const HealthChart = lazy(() => import('@/components/charts/HealthChart').then(m => ({ default: m.HealthChart })));
+const InBodyForm = lazy(() => import('@/components/forms/InBodyForm').then(m => ({ default: m.InBodyForm })));
+const InBodyHistory = lazy(() => import('@/components/forms/InBodyHistory').then(m => ({ default: m.InBodyHistory })));
+
+const CACHE_KEY_WORKOUTS = 'fitdash_workouts';
+const CACHE_KEY_HEALTH = 'fitdash_health';
+const CACHE_TTL = 6 * 60 * 60 * 1000; // 6 hours — matches CDN TTL
+
+function getCache<T>(key: string): T | null {
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return null;
+    const { data, ts } = JSON.parse(raw);
+    if (Date.now() - ts > CACHE_TTL) return null;
+    return data as T;
+  } catch {
+    return null;
+  }
+}
+
+function setCache(key: string, data: unknown) {
+  try {
+    sessionStorage.setItem(key, JSON.stringify({ data, ts: Date.now() }));
+  } catch { /* storage full */ }
+}
+
+function parseWorkoutDates(workouts: (Workout & { date: string })[]) {
+  return workouts.map(w => ({ ...w, date: new Date(w.date) }));
+}
+
+function TabLoading() {
+  return (
+    <div className="py-12 text-center">
+      <p className="font-mono text-[11px] uppercase tracking-[0.08em] text-n-text-disabled">[LOADING...]</p>
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const [workouts, setWorkouts] = useState<Workout[]>([]);
@@ -28,25 +67,29 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchWorkouts = useCallback(async () => {
+  const fetchWorkouts = useCallback(async (skipCache = false) => {
     try {
       setLoading(true);
       setError(null);
 
-      const response = await fetch('/api/notion');
+      if (!skipCache) {
+        const cached = getCache<(Workout & { date: string })[]>(CACHE_KEY_WORKOUTS);
+        if (cached) {
+          setWorkouts(parseWorkoutDates(cached));
+          setLoading(false);
+          return;
+        }
+      }
+
+      const response = await fetch(skipCache ? '/api/notion?refresh=1' : '/api/notion');
       const data = await response.json();
 
       if (!data.success) {
         throw new Error(data.error || 'Failed to fetch workouts');
       }
 
-      // Convert date strings back to Date objects
-      const parsedWorkouts = data.workouts.map((w: Workout & { date: string }) => ({
-        ...w,
-        date: new Date(w.date),
-      }));
-
-      setWorkouts(parsedWorkouts);
+      setCache(CACHE_KEY_WORKOUTS, data.workouts);
+      setWorkouts(parseWorkoutDates(data.workouts));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch workouts');
     } finally {
@@ -54,11 +97,20 @@ export default function Dashboard() {
     }
   }, []);
 
-  const fetchHealthData = useCallback(async () => {
+  const fetchHealthData = useCallback(async (skipCache = false) => {
     try {
+      if (!skipCache) {
+        const cached = getCache<DailyHealth[]>(CACHE_KEY_HEALTH);
+        if (cached) {
+          setHealthData(cached);
+          return;
+        }
+      }
+
       const response = await fetch('/api/health');
       const data = await response.json();
       if (data.success && data.data) {
+        setCache(CACHE_KEY_HEALTH, data.data);
         setHealthData(data.data);
       }
     } catch (err) {
@@ -78,6 +130,11 @@ export default function Dashboard() {
     loadInBodyData();
   }, [fetchWorkouts, fetchHealthData, loadInBodyData]);
 
+  const handleRefresh = () => {
+    fetchWorkouts(true);
+    fetchHealthData(true);
+  };
+
   const handleAddInBody = (entry: Omit<InBodyEntry, 'id'>) => {
     addInBodyEntry(entry);
     loadInBodyData();
@@ -89,22 +146,27 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-10">
+    <div className="min-h-screen bg-n-black">
+      <header className="bg-n-surface border-b border-n-border sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-6">
           <div className="flex justify-between items-center">
-            <h1 className="text-lg sm:text-2xl font-light text-gray-500 tracking-wide">Fitness Dashboard</h1>
-            <Button onClick={fetchWorkouts} disabled={loading} variant="outline" size="sm">
-              {loading ? '...' : 'Refresh'}
-            </Button>
+            <h1 className="font-mono text-sm sm:text-base uppercase tracking-[0.08em] text-n-text-secondary">
+              Fitness Dashboard
+            </h1>
+            <div className="flex items-center gap-3">
+              <ThemeToggle />
+              <Button onClick={handleRefresh} disabled={loading} variant="secondary" size="sm">
+                {loading ? '...' : 'Refresh'}
+              </Button>
+            </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
+      <main className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-10">
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-100 rounded-lg text-red-600 font-light">
-            {error}
+          <div className="mb-6 px-4 py-3 border border-n-accent bg-n-accent-subtle rounded-nothing-sm font-mono text-xs uppercase tracking-[0.04em] text-n-accent">
+            [ERROR: {error}]
           </div>
         )}
 
@@ -112,7 +174,7 @@ export default function Dashboard() {
           <StatsOverview workouts={workouts} latestInBody={latestInBody} />
         </div>
 
-        <Tabs defaultValue="progress" className="space-y-6">
+        <Tabs defaultValue="progress" className="space-y-8">
           <TabsList>
             <TabsTrigger value="insights">Insights</TabsTrigger>
             <TabsTrigger value="progress">Progress</TabsTrigger>
@@ -122,30 +184,42 @@ export default function Dashboard() {
           </TabsList>
 
           <TabsContent value="insights" className="space-y-6">
-            <Insights workouts={workouts} inBodyEntries={inBodyEntries} />
+            <Suspense fallback={<TabLoading />}>
+              <ExerciseAdvice />
+              <ProteinEstimate workouts={workouts} inBodyEntries={inBodyEntries} />
+              <Insights workouts={workouts} inBodyEntries={inBodyEntries} />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="progress" className="space-y-6">
-            <StrengthProgressChart workouts={workouts} />
-            <div className="grid lg:grid-cols-2 gap-6">
-              <WeightProgressChart workouts={workouts} />
-              <CategorySummary workouts={workouts} />
-            </div>
+            <Suspense fallback={<TabLoading />}>
+              <StrengthProgressChart workouts={workouts} />
+              <div className="grid lg:grid-cols-2 gap-6">
+                <WeightProgressChart workouts={workouts} />
+                <CategorySummary workouts={workouts} />
+              </div>
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="workouts" className="space-y-6">
-            <WorkoutSummary workouts={workouts} limit={15} />
+            <Suspense fallback={<TabLoading />}>
+              <WorkoutSummary workouts={workouts} limit={15} />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="body" className="space-y-6">
-            <BodyRecompChart entries={inBodyEntries} />
-            <BodyCompositionChart entries={inBodyEntries} />
-            <InBodyForm onSubmit={handleAddInBody} />
-            <InBodyHistory entries={inBodyEntries} onDelete={handleDeleteInBody} />
+            <Suspense fallback={<TabLoading />}>
+              <BodyRecompChart entries={inBodyEntries} />
+              <BodyCompositionChart entries={inBodyEntries} />
+              <InBodyForm onSubmit={handleAddInBody} />
+              <InBodyHistory entries={inBodyEntries} onDelete={handleDeleteInBody} />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="health" className="space-y-6">
-            <HealthChart data={healthData} onDataUpdate={fetchHealthData} />
+            <Suspense fallback={<TabLoading />}>
+              <HealthChart data={healthData} onDataUpdate={() => fetchHealthData(true)} />
+            </Suspense>
           </TabsContent>
         </Tabs>
       </main>

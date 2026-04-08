@@ -18,10 +18,10 @@ export function CategoryFilter({ categories, selected, onChange }: CategoryFilte
           key={category}
           onClick={() => onChange(category)}
           className={`
-            px-3 py-1.5 text-sm font-medium rounded-full transition-colors
+            px-3 py-1.5 font-mono text-[11px] uppercase tracking-[0.06em] rounded-pill transition-all duration-200 border
             ${selected === category
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              ? 'bg-n-text-display text-n-black border-n-text-display'
+              : 'bg-transparent text-n-text-secondary border-n-border-visible hover:border-n-text-secondary'
             }
           `}
         >

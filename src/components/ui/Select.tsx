@@ -19,7 +19,7 @@ export function Select({
       {label && (
         <label
           htmlFor={selectId}
-          className="block text-sm font-light text-gray-400 mb-1"
+          className="block font-mono text-[11px] uppercase tracking-[0.08em] text-n-text-secondary mb-2"
         >
           {label}
         </label>
@@ -29,24 +29,24 @@ export function Select({
           id={selectId}
           className={`
             appearance-none w-full px-4 py-2.5 pr-10
-            bg-white border border-gray-200 rounded-xl
-            text-gray-600 font-light text-sm
-            focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300
-            hover:border-gray-300 transition-colors
+            bg-n-surface-raised border border-n-border-visible rounded-nothing-sm
+            text-n-text-primary font-mono text-sm
+            focus:outline-none focus:border-n-text-secondary
+            hover:border-n-text-disabled transition-colors duration-200
             cursor-pointer
             ${className}
           `}
           {...props}
         >
           {options.map(option => (
-            <option key={option.value} value={option.value}>
+            <option key={option.value} value={option.value} className="bg-n-surface text-n-text-primary">
               {option.label}
             </option>
           ))}
         </select>
         <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
           <svg
-            className="w-4 h-4 text-gray-400"
+            className="w-4 h-4 text-n-text-secondary"
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"

@@ -1,11 +1,5 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
 import './globals.css'
-
-const inter = Inter({
-  subsets: ['latin'],
-  weight: ['300', '400', '500'],
-})
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://fit-dash-psi.vercel.app'),
@@ -37,8 +31,19 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <body className={inter.className}>{children}</body>
+    <html lang="en" className="dark">
+      <head>
+        <script dangerouslySetInnerHTML={{
+          __html: `
+            try {
+              if (localStorage.getItem('theme') === 'light') {
+                document.documentElement.classList.remove('dark');
+              }
+            } catch(e) {}
+          `
+        }} />
+      </head>
+      <body className="font-grotesk">{children}</body>
     </html>
   )
 }

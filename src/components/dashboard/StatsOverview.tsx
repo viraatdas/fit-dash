@@ -16,18 +16,14 @@ interface StatItem {
 }
 
 export function StatsOverview({ workouts, latestInBody }: StatsOverviewProps) {
-  // Calculate stats
   const totalWorkouts = workouts.length;
 
-  // Get workouts from last 7 days
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const recentWorkouts = workouts.filter(w => w.date >= sevenDaysAgo).length;
 
-  // Total exercises logged
   const totalExercises = workouts.reduce((sum, w) => sum + w.exercises.length, 0);
 
-  // Total sets logged
   const totalSets = workouts.reduce(
     (sum, w) => sum + w.exercises.reduce((eSum, e) => eSum + e.sets.length, 0),
     0
@@ -44,7 +40,7 @@ export function StatsOverview({ workouts, latestInBody }: StatsOverviewProps) {
     const measureDate = format(latestInBody.date, 'MMM d, yyyy');
     stats.push({
       label: 'Current Weight',
-      value: `${latestInBody.weight} lbs`,
+      value: `${latestInBody.weight}`,
       subtext: measureDate,
     });
     stats.push({
@@ -58,11 +54,11 @@ export function StatsOverview({ workouts, latestInBody }: StatsOverviewProps) {
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 sm:gap-4">
       {stats.map((stat) => (
         <Card key={stat.label}>
-          <CardContent className="text-center py-3 sm:py-4 px-2 sm:px-4">
-            <p className="text-lg sm:text-2xl font-light text-gray-700">{stat.value}</p>
-            <p className="text-xs sm:text-sm font-light text-gray-400">{stat.label}</p>
+          <CardContent className="text-center py-4 sm:py-5 px-2 sm:px-4">
+            <p className="text-2xl sm:text-3xl font-mono text-n-text-display tracking-tight">{stat.value}</p>
+            <p className="font-mono text-[10px] sm:text-[11px] uppercase tracking-[0.08em] text-n-text-secondary mt-1">{stat.label}</p>
             {stat.subtext && (
-              <p className="text-[10px] sm:text-xs font-light text-gray-300 mt-1">{stat.subtext}</p>
+              <p className="font-mono text-[9px] sm:text-[10px] text-n-text-disabled mt-1">{stat.subtext}</p>
             )}
           </CardContent>
         </Card>

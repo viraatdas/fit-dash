@@ -47,13 +47,13 @@ export function HealthChart({ data, onDataUpdate }: HealthChartProps) {
 
       const result = await response.json();
       if (result.success) {
-        setUploadMessage(`Uploaded successfully!`);
+        setUploadMessage('[UPLOADED]');
         onDataUpdate?.();
       } else {
-        setUploadMessage(`Error: ${result.error}`);
+        setUploadMessage(`[ERROR: ${result.error}]`);
       }
     } catch (err) {
-      setUploadMessage(`Error: ${err instanceof Error ? err.message : 'Failed to upload'}`);
+      setUploadMessage(`[ERROR: ${err instanceof Error ? err.message : 'Failed to upload'}]`);
     } finally {
       setUploading(false);
       if (fileInputRef.current) {
@@ -72,7 +72,6 @@ export function HealthChart({ data, onDataUpdate }: HealthChartProps) {
 
   const stats = useMemo(() => {
     if (data.length === 0) return null;
-
     const recent = data.slice(0, 7);
     const avgSteps = recent.reduce((sum, d) => sum + (d.steps || 0), 0) / recent.length;
     const avgCalories = recent.reduce((sum, d) => sum + (d.activeCalories || 0), 0) / recent.length;
@@ -96,7 +95,7 @@ export function HealthChart({ data, onDataUpdate }: HealthChartProps) {
         </CardHeader>
         <CardContent>
           <div className="text-center py-8">
-            <p className="text-gray-400 font-light mb-4">No health data yet</p>
+            <p className="font-mono text-xs text-n-text-disabled uppercase tracking-[0.04em] mb-6">[NO HEALTH DATA]</p>
 
             <div className="mb-6">
               <input
@@ -109,20 +108,20 @@ export function HealthChart({ data, onDataUpdate }: HealthChartProps) {
               <Button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={uploading}
-                variant="outline"
+                variant="secondary"
               >
-                {uploading ? 'Uploading...' : '📁 Upload Health Export JSON'}
+                {uploading ? 'Uploading...' : 'Upload Health JSON'}
               </Button>
               {uploadMessage && (
-                <p className={`text-sm mt-2 ${uploadMessage.includes('Error') ? 'text-red-500' : 'text-green-500'}`}>
+                <p className={`font-mono text-[11px] mt-2 ${uploadMessage.includes('ERROR') ? 'text-n-accent' : 'text-n-success'}`}>
                   {uploadMessage}
                 </p>
               )}
             </div>
 
-            <div className="text-sm text-gray-500 font-light space-y-2">
+            <div className="text-sm text-n-text-secondary space-y-2">
               <p>To export from Health Auto Export app:</p>
-              <ol className="list-decimal list-inside text-left max-w-md mx-auto space-y-1">
+              <ol className="list-decimal list-inside text-left max-w-md mx-auto space-y-1 text-n-text-disabled">
                 <li>Open Health Auto Export on your iPhone</li>
                 <li>Go to Export → Export as JSON</li>
                 <li>Upload the JSON file here</li>
@@ -137,7 +136,7 @@ export function HealthChart({ data, onDataUpdate }: HealthChartProps) {
   return (
     <div className="space-y-6">
       {/* Upload Button */}
-      <div className="flex justify-end">
+      <div className="flex justify-end items-center">
         <input
           ref={fileInputRef}
           type="file"
@@ -148,13 +147,13 @@ export function HealthChart({ data, onDataUpdate }: HealthChartProps) {
         <Button
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading}
-          variant="outline"
+          variant="secondary"
           size="sm"
         >
-          {uploading ? 'Uploading...' : '📁 Upload JSON'}
+          {uploading ? 'Uploading...' : 'Upload JSON'}
         </Button>
         {uploadMessage && (
-          <span className={`ml-3 text-sm ${uploadMessage.includes('Error') ? 'text-red-500' : 'text-green-500'}`}>
+          <span className={`ml-3 font-mono text-[11px] ${uploadMessage.includes('ERROR') ? 'text-n-accent' : 'text-n-success'}`}>
             {uploadMessage}
           </span>
         )}
@@ -165,26 +164,26 @@ export function HealthChart({ data, onDataUpdate }: HealthChartProps) {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
           <Card>
             <CardContent className="text-center py-3 sm:py-4">
-              <p className="text-lg sm:text-2xl font-light text-blue-500">{stats.avgSteps.toLocaleString()}</p>
-              <p className="text-xs sm:text-sm font-light text-gray-400">Avg Steps (7d)</p>
+              <p className="text-xl sm:text-2xl font-mono text-n-interactive tracking-tight">{stats.avgSteps.toLocaleString()}</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-n-text-secondary mt-1">Avg Steps (7d)</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="text-center py-3 sm:py-4">
-              <p className="text-lg sm:text-2xl font-light text-orange-500">{stats.avgCalories}</p>
-              <p className="text-xs sm:text-sm font-light text-gray-400">Avg Active Cal</p>
+              <p className="text-xl sm:text-2xl font-mono text-n-warning tracking-tight">{stats.avgCalories}</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-n-text-secondary mt-1">Avg Active Cal</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="text-center py-3 sm:py-4">
-              <p className="text-lg sm:text-2xl font-light text-purple-500">{stats.avgSleep}h</p>
-              <p className="text-xs sm:text-sm font-light text-gray-400">Avg Sleep</p>
+              <p className="text-xl sm:text-2xl font-mono text-n-text-primary tracking-tight">{stats.avgSleep}h</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-n-text-secondary mt-1">Avg Sleep</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="text-center py-3 sm:py-4">
-              <p className="text-lg sm:text-2xl font-light text-red-400">{stats.avgHR || '–'}</p>
-              <p className="text-xs sm:text-sm font-light text-gray-400">Resting HR</p>
+              <p className="text-xl sm:text-2xl font-mono text-n-accent tracking-tight">{stats.avgHR || '–'}</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-n-text-secondary mt-1">Resting HR</p>
             </CardContent>
           </Card>
         </div>
@@ -199,51 +198,16 @@ export function HealthChart({ data, onDataUpdate }: HealthChartProps) {
           <div className="h-48 sm:h-64">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData}>
-                <defs>
-                  <linearGradient id="stepsGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="date" stroke="#9ca3af" fontSize={10} tickLine={false} />
-                <YAxis
-                  yAxisId="steps"
-                  stroke="#9ca3af"
-                  fontSize={10}
-                  tickLine={false}
-                  tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
-                />
-                <YAxis
-                  yAxisId="cal"
-                  orientation="right"
-                  stroke="#9ca3af"
-                  fontSize={10}
-                  tickLine={false}
-                />
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" fontSize={10} tickLine={false} fontFamily="Space Mono" />
+                <YAxis yAxisId="steps" fontSize={10} tickLine={false} fontFamily="Space Mono" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <YAxis yAxisId="cal" orientation="right" fontSize={10} tickLine={false} fontFamily="Space Mono" />
                 <Tooltip
-                  contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '12px' }}
                   labelFormatter={(_, payload) => payload?.[0]?.payload?.fullDate || ''}
                 />
-                <Legend wrapperStyle={{ fontSize: '11px' }} />
-                <Area
-                  yAxisId="steps"
-                  type="monotone"
-                  dataKey="steps"
-                  name="Steps"
-                  fill="url(#stepsGradient)"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                />
-                <Line
-                  yAxisId="cal"
-                  type="monotone"
-                  dataKey="activeCalories"
-                  name="Active Cal"
-                  stroke="#f59e0b"
-                  strokeWidth={2}
-                  dot={false}
-                />
+                <Legend wrapperStyle={{ fontSize: '10px', fontFamily: 'Space Mono' }} />
+                <Area yAxisId="steps" type="monotone" dataKey="steps" name="Steps" fill="rgba(0,0,0,0.05)" stroke="#5B9BF6" strokeWidth={2} />
+                <Line yAxisId="cal" type="monotone" dataKey="activeCalories" name="Active Cal" stroke="#D4A843" strokeWidth={2} dot={false} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
@@ -255,40 +219,27 @@ export function HealthChart({ data, onDataUpdate }: HealthChartProps) {
         <Card>
           <CardHeader>
             <CardTitle>Resting Heart Rate</CardTitle>
-            <p className="text-xs text-gray-400 mt-1">Lower is generally better - indicates cardiovascular fitness</p>
+            <p className="text-xs text-n-text-disabled mt-1">Lower is generally better</p>
           </CardHeader>
           <CardContent>
             <div className="h-48 sm:h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chartData}>
-                  <defs>
-                    <linearGradient id="hrGradientResting" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#ef4444" stopOpacity={0.05} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="date" stroke="#9ca3af" fontSize={10} tickLine={false} />
-                  <YAxis
-                    stroke="#9ca3af"
-                    fontSize={10}
-                    tickLine={false}
-                    domain={[50, 80]}
-                    tickFormatter={(v) => `${v}`}
-                  />
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" fontSize={10} tickLine={false} fontFamily="Space Mono" />
+                  <YAxis fontSize={10} tickLine={false} domain={[50, 80]} fontFamily="Space Mono" />
                   <Tooltip
-                    contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '12px' }}
-                    formatter={(value) => [`${value} bpm`, 'Resting HR']}
+                    formatter={(value) => [`${value} bpm`, 'RESTING HR']}
                     labelFormatter={(_, payload) => payload?.[0]?.payload?.fullDate || ''}
                   />
                   <Area
                     type="monotone"
                     dataKey="restingHeartRate"
                     name="Resting HR"
-                    fill="url(#hrGradientResting)"
-                    stroke="#ef4444"
+                    fill="rgba(0,0,0,0.05)"
+                    stroke="#D71921"
                     strokeWidth={2}
-                    dot={{ r: 4, fill: '#ef4444', strokeWidth: 2, stroke: '#fff' }}
+                    dot={{ r: 3, fill: '#D71921', strokeWidth: 0 }}
                     connectNulls
                   />
                 </ComposedChart>
@@ -301,34 +252,19 @@ export function HealthChart({ data, onDataUpdate }: HealthChartProps) {
       {/* Sleep Chart */}
       {chartData.some(d => d.sleepHours) && (
         <Card>
-          <CardHeader>
-            <CardTitle>Sleep</CardTitle>
-          </CardHeader>
+          <CardHeader><CardTitle>Sleep</CardTitle></CardHeader>
           <CardContent>
             <div className="h-48 sm:h-64">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                  <XAxis dataKey="date" stroke="#9ca3af" fontSize={10} tickLine={false} />
-                  <YAxis
-                    stroke="#9ca3af"
-                    fontSize={10}
-                    tickLine={false}
-                    domain={[0, 10]}
-                    tickFormatter={(v) => `${v}h`}
-                  />
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" fontSize={10} tickLine={false} fontFamily="Space Mono" />
+                  <YAxis fontSize={10} tickLine={false} domain={[0, 10]} fontFamily="Space Mono" tickFormatter={(v) => `${v}h`} />
                   <Tooltip
-                    contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '12px' }}
-                    formatter={(value) => [`${value}h`, 'Sleep']}
+                    formatter={(value) => [`${value}h`, 'SLEEP']}
                     labelFormatter={(_, payload) => payload?.[0]?.payload?.fullDate || ''}
                   />
-                  <Bar
-                    dataKey="sleepHours"
-                    name="Sleep"
-                    fill="#8b5cf6"
-                    radius={[4, 4, 0, 0]}
-                    maxBarSize={30}
-                  />
+                  <Bar dataKey="sleepHours" name="Sleep" fill="#E8E8E8" radius={[2, 2, 0, 0]} maxBarSize={30} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -336,14 +272,13 @@ export function HealthChart({ data, onDataUpdate }: HealthChartProps) {
         </Card>
       )}
 
-      {/* Heart Rate Over Time - All Days */}
+      {/* Heart Rate Trends */}
       {data.some(d => d.hourlyHeartRate && d.hourlyHeartRate.length > 0) && (
         <>
-          {/* Daily Heart Rate Summary Chart */}
           <Card>
             <CardHeader>
               <CardTitle>Heart Rate Trends</CardTitle>
-              <p className="text-xs text-gray-400 mt-1">Daily average, min, and max heart rate</p>
+              <p className="text-xs text-n-text-disabled mt-1">Daily average, min, and max</p>
             </CardHeader>
             <CardContent>
               <div className="h-48 sm:h-64">
@@ -365,69 +300,22 @@ export function HealthChart({ data, onDataUpdate }: HealthChartProps) {
                         };
                       })}
                   >
-                    <defs>
-                      <linearGradient id="hrRangeGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.2} />
-                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0.05} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="date" stroke="#9ca3af" fontSize={10} tickLine={false} />
-                    <YAxis
-                      stroke="#9ca3af"
-                      fontSize={10}
-                      tickLine={false}
-                      domain={[40, 180]}
-                    />
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" fontSize={10} tickLine={false} fontFamily="Space Mono" />
+                    <YAxis fontSize={10} tickLine={false} domain={[40, 180]} fontFamily="Space Mono" />
                     <Tooltip
-                      contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '12px' }}
                       labelFormatter={(_, payload) => payload?.[0]?.payload?.fullDate || ''}
                       formatter={(value, name) => {
-                        const labels: Record<string, string> = {
-                          max: 'Max HR',
-                          avg: 'Avg HR',
-                          min: 'Min HR',
-                          resting: 'Resting HR',
-                        };
+                        const labels: Record<string, string> = { max: 'MAX HR', avg: 'AVG HR', min: 'MIN HR', resting: 'RESTING' };
                         return [`${value} bpm`, labels[name as string] || name];
                       }}
                     />
-                    <Legend wrapperStyle={{ fontSize: '11px' }} />
-                    <Area
-                      type="monotone"
-                      dataKey="max"
-                      name="Max"
-                      fill="url(#hrRangeGradient)"
-                      stroke="#ef4444"
-                      strokeWidth={1}
-                      strokeDasharray="3 3"
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="avg"
-                      name="Average"
-                      stroke="#ef4444"
-                      strokeWidth={2}
-                      dot={{ r: 3, fill: '#ef4444' }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="min"
-                      name="Min"
-                      stroke="#fca5a5"
-                      strokeWidth={1}
-                      dot={false}
-                    />
+                    <Legend wrapperStyle={{ fontSize: '10px', fontFamily: 'Space Mono' }} />
+                    <Area type="monotone" dataKey="max" name="Max" fill="rgba(0,0,0,0.05)" stroke="#D71921" strokeWidth={1} strokeDasharray="3 3" />
+                    <Line type="monotone" dataKey="avg" name="Average" stroke="#D71921" strokeWidth={2} dot={{ r: 3, fill: '#D71921', strokeWidth: 0 }} />
+                    <Line type="monotone" dataKey="min" name="Min" stroke="#666666" strokeWidth={1} dot={false} />
                     {data.some(d => d.restingHeartRate) && (
-                      <Line
-                        type="monotone"
-                        dataKey="resting"
-                        name="Resting"
-                        stroke="#10b981"
-                        strokeWidth={2}
-                        dot={{ r: 2, fill: '#10b981' }}
-                        connectNulls
-                      />
+                      <Line type="monotone" dataKey="resting" name="Resting" stroke="#4A9E5C" strokeWidth={2} dot={{ r: 2, fill: '#4A9E5C', strokeWidth: 0 }} connectNulls />
                     )}
                   </ComposedChart>
                 </ResponsiveContainer>
@@ -435,21 +323,21 @@ export function HealthChart({ data, onDataUpdate }: HealthChartProps) {
             </CardContent>
           </Card>
 
-          {/* Detailed Intraday View for Selected Day */}
+          {/* Hourly Heart Rate */}
           <Card>
             <CardHeader>
               <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
                 <div>
                   <CardTitle>Hourly Heart Rate</CardTitle>
-                  <p className="text-xs text-gray-400 mt-1">Heart rate throughout a specific day</p>
+                  <p className="text-xs text-n-text-disabled mt-1">Heart rate throughout a specific day</p>
                 </div>
                 <select
                   value={selectedDay || data.find(d => d.hourlyHeartRate?.length)?.date || ''}
                   onChange={(e) => setSelectedDay(e.target.value)}
-                  className="px-3 py-1.5 text-sm border border-gray-200 rounded-lg bg-white"
+                  className="px-3 py-1.5 font-mono text-xs bg-n-surface-raised border border-n-border-visible rounded-nothing-sm text-n-text-primary"
                 >
                   {data.filter(d => d.hourlyHeartRate?.length).map(d => (
-                    <option key={d.date} value={d.date}>
+                    <option key={d.date} value={d.date} className="bg-n-surface">
                       {format(parseISO(d.date), 'MMM d, yyyy')}
                     </option>
                   ))}
@@ -468,33 +356,20 @@ export function HealthChart({ data, onDataUpdate }: HealthChartProps) {
                       }));
                     })()}
                   >
-                    <defs>
-                      <linearGradient id="hrGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="time" stroke="#9ca3af" fontSize={10} tickLine={false} />
-                    <YAxis
-                      stroke="#9ca3af"
-                      fontSize={10}
-                      tickLine={false}
-                      domain={[50, 160]}
-                      tickFormatter={(v) => `${v}`}
-                    />
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="time" fontSize={10} tickLine={false} fontFamily="Space Mono" />
+                    <YAxis fontSize={10} tickLine={false} domain={[50, 160]} fontFamily="Space Mono" />
                     <Tooltip
-                      contentStyle={{ backgroundColor: 'white', border: '1px solid #e5e7eb', borderRadius: '8px', fontSize: '12px' }}
-                      formatter={(value) => [`${value} bpm`, 'Heart Rate']}
+                      formatter={(value) => [`${value} bpm`, 'HR']}
                     />
                     <Area
                       type="monotone"
                       dataKey="heartRate"
                       name="Heart Rate"
-                      fill="url(#hrGradient)"
-                      stroke="#ef4444"
+                      fill="rgba(0,0,0,0.05)"
+                      stroke="#D71921"
                       strokeWidth={2}
-                      dot={{ r: 3, fill: '#ef4444' }}
+                      dot={{ r: 3, fill: '#D71921', strokeWidth: 0 }}
                     />
                   </ComposedChart>
                 </ResponsiveContainer>

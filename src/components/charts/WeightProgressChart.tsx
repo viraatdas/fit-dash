@@ -27,7 +27,6 @@ interface ChartDataPoint {
 }
 
 export function WeightProgressChart({ workouts }: WeightProgressChartProps) {
-  // Get unique exercises from all workouts
   const exercises = useMemo(() => {
     const exerciseSet = new Set<string>();
     workouts.forEach(w => {
@@ -40,36 +39,17 @@ export function WeightProgressChart({ workouts }: WeightProgressChartProps) {
 
   const [selectedExercise, setSelectedExercise] = useState(exercises[0] || '');
 
-  // Generate chart data for selected exercise
   const chartData = useMemo(() => {
     if (!selectedExercise) return [];
-
     const dataPoints: ChartDataPoint[] = [];
-
-    // Sort workouts by date ascending for chart
-    const sortedWorkouts = [...workouts].sort(
-      (a, b) => a.date.getTime() - b.date.getTime()
-    );
+    const sortedWorkouts = [...workouts].sort((a, b) => a.date.getTime() - b.date.getTime());
 
     for (const workout of sortedWorkouts) {
-      const exercise = workout.exercises.find(
-        e => e.normalizedName === selectedExercise
-      );
-
+      const exercise = workout.exercises.find(e => e.normalizedName === selectedExercise);
       if (exercise && exercise.sets.length > 0) {
-        // Find max weight used
         const maxWeight = Math.max(...exercise.sets.map(s => s.weight));
-
-        // Calculate total volume (weight × reps for all sets)
-        const totalVolume = exercise.sets.reduce(
-          (sum, s) => sum + s.weight * s.reps,
-          0
-        );
-
-        // Average weight across sets
-        const avgWeight =
-          exercise.sets.reduce((sum, s) => sum + s.weight, 0) /
-          exercise.sets.length;
+        const totalVolume = exercise.sets.reduce((sum, s) => sum + s.weight * s.reps, 0);
+        const avgWeight = exercise.sets.reduce((sum, s) => sum + s.weight, 0) / exercise.sets.length;
 
         dataPoints.push({
           date: format(workout.date, 'MMM d'),
@@ -79,18 +59,15 @@ export function WeightProgressChart({ workouts }: WeightProgressChartProps) {
         });
       }
     }
-
     return dataPoints;
   }, [workouts, selectedExercise]);
 
   if (exercises.length === 0) {
     return (
       <Card>
-        <CardHeader>
-          <CardTitle>Weight Progress</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle>Weight Progress</CardTitle></CardHeader>
         <CardContent>
-          <p className="text-gray-500">No exercise data available</p>
+          <p className="font-mono text-xs text-n-text-disabled uppercase tracking-[0.04em]">[NO DATA]</p>
         </CardContent>
       </Card>
     );
@@ -109,53 +86,26 @@ export function WeightProgressChart({ workouts }: WeightProgressChartProps) {
       </CardHeader>
       <CardContent>
         {chartData.length === 0 ? (
-          <p className="text-gray-500 text-center py-8">
-            No data for {selectedExercise}
+          <p className="font-mono text-xs text-n-text-disabled text-center py-8 uppercase tracking-[0.04em]">
+            [NO DATA FOR {selectedExercise.toUpperCase()}]
           </p>
         ) : (
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis
-                  dataKey="date"
-                  stroke="#6b7280"
-                  fontSize={12}
-                />
-                <YAxis
-                  stroke="#6b7280"
-                  fontSize={12}
-                  tickFormatter={(value) => `${value} lbs`}
-                />
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="date" fontSize={10} fontFamily="Space Mono" />
+                <YAxis fontSize={10} fontFamily="Space Mono" tickFormatter={(value) => `${value}`} />
                 <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'white',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: '8px',
-                  }}
                   formatter={(value, name) => {
-                    if (name === 'maxWeight') return [`${value} lbs`, 'Max Weight'];
-                    if (name === 'weight') return [`${value} lbs`, 'Avg Weight'];
+                    if (name === 'maxWeight') return [`${value} lbs`, 'MAX'];
+                    if (name === 'weight') return [`${value} lbs`, 'AVG'];
                     return [value, name];
                   }}
                 />
-                <Legend />
-                <Line
-                  type="monotone"
-                  dataKey="maxWeight"
-                  stroke="#3b82f6"
-                  strokeWidth={2}
-                  dot={{ fill: '#3b82f6', strokeWidth: 2 }}
-                  name="Max Weight"
-                />
-                <Line
-                  type="monotone"
-                  dataKey="weight"
-                  stroke="#10b981"
-                  strokeWidth={2}
-                  dot={{ fill: '#10b981', strokeWidth: 2 }}
-                  name="Avg Weight"
-                />
+                <Legend wrapperStyle={{ fontSize: '10px', fontFamily: 'Space Mono' }} />
+                <Line type="monotone" dataKey="maxWeight" stroke="#E8E8E8" strokeWidth={2} dot={{ fill: '#E8E8E8', strokeWidth: 0, r: 3 }} name="Max Weight" />
+                <Line type="monotone" dataKey="weight" stroke="#5B9BF6" strokeWidth={2} dot={{ fill: '#5B9BF6', strokeWidth: 0, r: 3 }} name="Avg Weight" />
               </LineChart>
             </ResponsiveContainer>
           </div>

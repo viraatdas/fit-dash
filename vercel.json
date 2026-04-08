@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/exercise-reminder",
+      "schedule": "15 4 * * *"
+    },
+    {
+      "path": "/api/cron/warm-cache",
+      "schedule": "0 */6 * * *"
+    }
+  ]
+}

@@ -32,7 +32,7 @@ interface TabsListProps {
 
 export function TabsList({ children, className = '' }: TabsListProps) {
   return (
-    <div className={`flex gap-1 p-1 bg-gray-100 rounded-lg overflow-x-auto scrollbar-hide ${className}`}>
+    <div className={`flex gap-0 border border-n-border-visible rounded-pill overflow-hidden ${className}`}>
       {children}
     </div>
   );
@@ -54,10 +54,10 @@ export function TabsTrigger({ value, children, className = '' }: TabsTriggerProp
     <button
       onClick={() => context.setActiveTab(value)}
       className={`
-        px-3 sm:px-4 py-2 text-xs sm:text-sm font-light rounded-md transition-colors whitespace-nowrap
+        px-4 sm:px-5 py-2.5 font-mono text-[11px] sm:text-xs uppercase tracking-[0.06em] transition-all duration-200 whitespace-nowrap
         ${isActive
-          ? 'bg-white text-gray-700 shadow-sm'
-          : 'text-gray-400 hover:text-gray-600'
+          ? 'bg-n-text-display text-n-black'
+          : 'text-n-text-secondary hover:text-n-text-primary'
         }
         ${className}
       `}
