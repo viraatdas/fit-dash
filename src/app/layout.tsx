@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  metadataBase: new URL('https://fit-dash-psi.vercel.app'),
+  metadataBase: new URL('https://fitdash.viraat.dev'),
   title: 'Fitness Dashboard',
   description: 'Track your workouts, analyze strength progress, and monitor body composition. Powered by Notion.',
   keywords: ['fitness', 'workout tracker', 'strength training', 'body composition', 'inbody'],

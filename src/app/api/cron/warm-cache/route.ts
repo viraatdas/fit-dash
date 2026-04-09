@@ -12,7 +12,7 @@ export async function GET(request: Request) {
 
   try {
     // Hit the notion API to populate Redis + CDN cache
-    const baseUrl = `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL || 'fitdash.viraat.dev'}`;
+    const baseUrl = `https://${process.env.APP_URL || 'fitdash.viraat.dev'}`;
 
     const response = await fetch(`${baseUrl}/api/notion?refresh=1`);
     const data = await response.json();
