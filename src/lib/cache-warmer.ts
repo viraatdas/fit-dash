@@ -19,15 +19,19 @@ export function startCacheWarmer() {
 
   async function warm() {
     try {
-      console.log('[cache-warmer] Warming workout cache...');
-      const res = await fetch(`${baseUrl}/api/notion?refresh=1`);
+      // The cron endpoint handles everything: workouts + advice + protein estimate
+      console.log('[cache-warmer] Warming all caches...');
+      const res = await fetch(`${baseUrl}/api/cron/warm-cache`, {
+        headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
+      });
       if (res.ok) {
-        console.log('[cache-warmer] Workout cache warmed successfully');
+        const data = await res.json();
+        console.log(`[cache-warmer] Done — ${data.workouts} workouts cached`);
       } else {
-        console.error('[cache-warmer] Failed to warm cache:', res.status);
+        console.error('[cache-warmer] Failed:', res.status);
       }
     } catch (err) {
-      console.error('[cache-warmer] Error warming cache:', err);
+      console.error('[cache-warmer] Error:', err);
     }
   }
 
