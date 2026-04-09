@@ -8,6 +8,10 @@ export const maxDuration = 60;
 const REDIS_KEY = 'fitdash:workouts';
 const REDIS_TTL = 86400; // 24 hours
 
+// In-memory cache — survives across requests on always-on servers (Fly.io)
+let memoryCache: { workouts: unknown; ts: number } | null = null;
+const MEMORY_TTL = 6 * 60 * 60 * 1000; // 6 hours
+
 interface NotionBlock {
   id: string;
   type: string;
@@ -58,12 +62,19 @@ export async function GET(request: Request) {
     let workouts;
     const redis = getRedis();
 
-    // Fast path: read from Redis (~100ms) instead of Notion+LLM pipeline (10-20s)
-    if (!forceRefresh && redis) {
+    // Layer 1: In-memory cache (sub-ms, survives on always-on servers)
+    if (!forceRefresh && memoryCache && Date.now() - memoryCache.ts < MEMORY_TTL) {
+      workouts = memoryCache.workouts;
+      console.log('Serving workouts from memory cache');
+    }
+
+    // Layer 2: Redis cache (~100ms)
+    if (!workouts && !forceRefresh && redis) {
       try {
         const cached = await redis.get(REDIS_KEY);
         if (cached) {
           workouts = typeof cached === 'string' ? JSON.parse(cached) : cached;
+          memoryCache = { workouts, ts: Date.now() };
           console.log('Serving workouts from Redis cache');
         }
       } catch (err) {
@@ -71,12 +82,13 @@ export async function GET(request: Request) {
       }
     }
 
-    // Cache miss or forced refresh: full Notion fetch
+    // Layer 3: Full Notion fetch (slow, only on cache miss or forced refresh)
     if (!workouts) {
-      console.log(forceRefresh ? 'Force refresh: fetching from Notion' : 'Redis miss: fetching from Notion');
+      console.log(forceRefresh ? 'Force refresh: fetching from Notion' : 'Cache miss: fetching from Notion');
       workouts = await fetchFresh();
 
-      // Store in Redis for next cold start
+      // Populate both caches
+      memoryCache = { workouts, ts: Date.now() };
       if (redis) {
         try {
           await redis.set(REDIS_KEY, JSON.stringify(workouts), { ex: REDIS_TTL });
