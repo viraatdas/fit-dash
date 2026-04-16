@@ -8,6 +8,7 @@ interface RecompInsight {
   verdict: string;
   status: 'on_track' | 'needs_adjustment' | 'insufficient_data';
   rate_analysis: string;
+  pace_take?: string;
   belly_fat_take: string;
   strength_take: string;
   actions: string[];
@@ -157,6 +158,12 @@ export function RecompVerdict({ inBodyEntries }: { inBodyEntries: InBodyEntry[] 
             <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-n-text-disabled mb-1">RATE OF CHANGE</p>
             <p className="text-sm text-n-text-secondary leading-relaxed">{data.rate_analysis}</p>
           </div>
+          {data.pace_take && (
+            <div>
+              <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-n-text-disabled mb-1">PACE vs TIMEFRAME</p>
+              <p className="text-sm text-n-text-secondary leading-relaxed">{data.pace_take}</p>
+            </div>
+          )}
           <div>
             <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-n-text-disabled mb-1">BELLY FAT TRAJECTORY</p>
             <p className="text-sm text-n-text-secondary leading-relaxed">{data.belly_fat_take}</p>

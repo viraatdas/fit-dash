@@ -172,8 +172,9 @@ export async function POST(request: Request) {
   const inBodySummary = summarizeInBody(inBodyEntries);
   if (!inBodySummary) return NextResponse.json({ error: 'No InBody data provided' }, { status: 400 });
 
-  // cache key from goal + inbody summary only (the heavy inputs — workouts/food change slower)
-  const cacheKey = REDIS_PREFIX + hashInputs({ goal, latestDate: inBodySummary.latest.date, entryCount: inBodyEntries.length });
+  // cache key includes a PROMPT_VERSION so prompt changes invalidate cached verdicts
+  const PROMPT_VERSION = 'v2-pace-take';
+  const cacheKey = REDIS_PREFIX + hashInputs({ v: PROMPT_VERSION, goal, latestDate: inBodySummary.latest.date, entryCount: inBodyEntries.length });
 
   // Memory
   const mem = memoryCache.get(cacheKey);
@@ -253,11 +254,19 @@ NUTRITION (last ${foodSummary.daysLogged} logged days — note any days unlogged
 
 Analyze rate of change and whether the user is on track for their goal. Be honest about what the numbers imply — if logging is thin, call it out. Focus on belly fat loss (visceral) and progressive overload specifically.
 
+Benchmarks to judge pace against:
+- Realistic trained recomp: 0.25-0.5 lb muscle/month, 0.5-1% BF drop/month.
+- Aggressive-but-sustainable cut: up to 1% BF/month while retaining muscle.
+- If they're moving faster than aggressive benchmarks → may be unsustainable or water weight.
+- If slower than realistic benchmarks → they likely have room to push harder.
+- Weigh the monthly rate ( = delta / (daysBetween / 30) ), not the raw delta.
+
 Return ONLY valid JSON (no markdown):
 {
   "verdict": "<one-line bottom line, max 14 words>",
   "status": "on_track" | "needs_adjustment" | "insufficient_data",
   "rate_analysis": "<2-3 sentences on rate of muscle gain vs fat loss. Reference specific numbers. If the deltas suggest recomp is working/not working, say so. If timespan is too short for conclusions, say that.>",
+  "pace_take": "<1-2 sentences judging whether the rate of change over the measured duration is appropriate, too slow (could push harder), or too aggressive (back off). Reference monthly rates vs the benchmarks above, and call out if the duration itself is too short to judge reliably.>",
   "belly_fat_take": "<1-2 sentences specifically on belly fat / visceral fat trajectory based on BF% and body fat mass trend>",
   "strength_take": "<1-2 sentences on whether compound lifts are progressing fast enough to call it 'progressive overload'>",
   "actions": [
