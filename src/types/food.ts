@@ -6,6 +6,15 @@ export interface NutrientInfo {
   fiber: number;     // grams
   sugar?: number;    // grams
   sodium?: number;   // mg
+  // Micros
+  calcium?: number;    // mg
+  iron?: number;       // mg
+  potassium?: number;  // mg
+  magnesium?: number;  // mg
+  zinc?: number;       // mg
+  vitaminD?: number;   // mcg
+  vitaminB12?: number; // mcg
+  vitaminC?: number;   // mg
 }
 
 export interface FoodItem {

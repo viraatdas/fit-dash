@@ -67,6 +67,39 @@ function DayCard({ day }: { day: FoodDay }) {
               )}
             </div>
 
+            {/* Micronutrients — vs daily reference intake */}
+            {(day.totals.calcium || day.totals.iron || day.totals.potassium || day.totals.magnesium) != null && (
+              <div className="border-t border-n-border pt-3">
+                <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-n-text-disabled mb-2">Micronutrients (vs daily target)</p>
+                <div className="space-y-2 px-1">
+                  {day.totals.calcium != null && day.totals.calcium > 0 && (
+                    <NutrientBar label="Calcium" value={day.totals.calcium} unit="mg" max={1000} color="bg-slate-400" />
+                  )}
+                  {day.totals.iron != null && day.totals.iron > 0 && (
+                    <NutrientBar label="Iron" value={day.totals.iron} unit="mg" max={8} color="bg-red-400" />
+                  )}
+                  {day.totals.potassium != null && day.totals.potassium > 0 && (
+                    <NutrientBar label="Potassium" value={day.totals.potassium} unit="mg" max={3400} color="bg-purple-400" />
+                  )}
+                  {day.totals.magnesium != null && day.totals.magnesium > 0 && (
+                    <NutrientBar label="Magnesium" value={day.totals.magnesium} unit="mg" max={420} color="bg-emerald-400" />
+                  )}
+                  {day.totals.zinc != null && day.totals.zinc > 0 && (
+                    <NutrientBar label="Zinc" value={day.totals.zinc} unit="mg" max={11} color="bg-cyan-400" />
+                  )}
+                  {day.totals.vitaminC != null && day.totals.vitaminC > 0 && (
+                    <NutrientBar label="Vit C" value={day.totals.vitaminC} unit="mg" max={90} color="bg-yellow-400" />
+                  )}
+                  {day.totals.vitaminD != null && day.totals.vitaminD > 0 && (
+                    <NutrientBar label="Vit D" value={day.totals.vitaminD} unit="mcg" max={15} color="bg-amber-400" />
+                  )}
+                  {day.totals.vitaminB12 != null && day.totals.vitaminB12 > 0 && (
+                    <NutrientBar label="Vit B12" value={day.totals.vitaminB12} unit="mcg" max={2.4} color="bg-pink-400" />
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Individual items */}
             <div className="border-t border-n-border pt-3 space-y-2">
               <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-n-text-disabled mb-2">Items</p>

@@ -10,10 +10,13 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
+  ReferenceLine,
+  ReferenceArea,
 } from 'recharts';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui';
 import { InBodyEntry } from '@/types';
 import { useMemo } from 'react';
+import { BODY_GOAL } from '@/lib/goals';
 
 interface BodyCompositionChartProps {
   entries: InBodyEntry[];
@@ -43,7 +46,10 @@ export function BodyCompositionChart({ entries }: BodyCompositionChartProps) {
 
   return (
     <Card>
-      <CardHeader><CardTitle>Body Composition</CardTitle></CardHeader>
+      <CardHeader>
+        <CardTitle>Body Composition</CardTitle>
+        <p className="text-xs text-n-text-disabled mt-1">Weight band {BODY_GOAL.targetWeightRange.min}-{BODY_GOAL.targetWeightRange.max} lb · BF% goal {BODY_GOAL.targetBodyFatPercentage}%</p>
+      </CardHeader>
       <CardContent>
         <div className="h-64">
           <ResponsiveContainer width="100%" height="100%">
@@ -61,6 +67,8 @@ export function BodyCompositionChart({ entries }: BodyCompositionChartProps) {
                 }}
               />
               <Legend wrapperStyle={{ fontSize: '10px', fontFamily: 'Space Mono' }} />
+              <ReferenceArea yAxisId="left" y1={BODY_GOAL.targetWeightRange.min} y2={BODY_GOAL.targetWeightRange.max} fill="#E8E8E8" fillOpacity={0.04} strokeOpacity={0} />
+              <ReferenceLine yAxisId="right" y={BODY_GOAL.targetBodyFatPercentage} stroke="#D71921" strokeDasharray="4 4" strokeOpacity={0.5} label={{ value: `Goal ${BODY_GOAL.targetBodyFatPercentage}%`, fill: '#D71921', fontSize: 10, fontFamily: 'Space Mono', position: 'insideTopRight' }} />
               <Line yAxisId="left" type="monotone" dataKey="weight" stroke="#E8E8E8" strokeWidth={2} dot={{ fill: '#E8E8E8', strokeWidth: 0, r: 3 }} name="Weight" />
               <Line yAxisId="left" type="monotone" dataKey="muscleMass" stroke="#4A9E5C" strokeWidth={2} dot={{ fill: '#4A9E5C', strokeWidth: 0, r: 3 }} name="Muscle Mass" />
               <Line yAxisId="right" type="monotone" dataKey="bodyFat" stroke="#D71921" strokeWidth={2} dot={{ fill: '#D71921', strokeWidth: 0, r: 3 }} name="Body Fat %" />

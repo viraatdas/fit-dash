@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { InBodyEntry, InBodyData } from '@/types';
 
 const STORAGE_KEY = 'fit-dash-inbody';
-const SEEDED_KEY = 'fit-dash-inbody-seeded';
+const SEEDED_KEY = 'fit-dash-inbody-seeded-v3';
 
 // Your actual InBody data
 const DEFAULT_ENTRIES: Omit<InBodyEntry, 'id'>[] = [
@@ -25,8 +25,24 @@ const DEFAULT_ENTRIES: Omit<InBodyEntry, 'id'>[] = [
     bodyFatMass: 26.3,
     bmi: 25.4,
     visceralFat: 4,
+    visceralFatArea: 45.0,
+    trunkFatMass: 13.9,
     legLeanMass: 40.0,
     ecwRatio: 0.363,
+  },
+  {
+    date: new Date('2026-04-15'),
+    weight: 167.2,
+    bodyFatPercentage: 15.4,
+    muscleMass: 82.5,
+    bodyFatMass: 25.7,
+    bmi: 26.2,
+    visceralFat: 4,
+    visceralFatArea: 40.8,
+    trunkFatMass: 13.9,
+    legLeanMass: 40.5,
+    ecwRatio: 0.357,
+    basalMetabolicRate: 1756,
   },
 ];
 

@@ -98,7 +98,7 @@ async function fetchImageAsBase64(url: string): Promise<{ data: string; mimeType
 }
 
 function sumNutrients(items: FoodItem[]): NutrientInfo {
-  return items.reduce(
+  return items.reduce<NutrientInfo>(
     (acc, item) => ({
       calories: acc.calories + item.nutrients.calories,
       protein: acc.protein + item.nutrients.protein,
@@ -107,8 +107,20 @@ function sumNutrients(items: FoodItem[]): NutrientInfo {
       fiber: acc.fiber + item.nutrients.fiber,
       sugar: (acc.sugar || 0) + (item.nutrients.sugar || 0),
       sodium: (acc.sodium || 0) + (item.nutrients.sodium || 0),
+      calcium: (acc.calcium || 0) + (item.nutrients.calcium || 0),
+      iron: (acc.iron || 0) + (item.nutrients.iron || 0),
+      potassium: (acc.potassium || 0) + (item.nutrients.potassium || 0),
+      magnesium: (acc.magnesium || 0) + (item.nutrients.magnesium || 0),
+      zinc: (acc.zinc || 0) + (item.nutrients.zinc || 0),
+      vitaminD: (acc.vitaminD || 0) + (item.nutrients.vitaminD || 0),
+      vitaminB12: (acc.vitaminB12 || 0) + (item.nutrients.vitaminB12 || 0),
+      vitaminC: (acc.vitaminC || 0) + (item.nutrients.vitaminC || 0),
     }),
-    { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0 },
+    {
+      calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0, sodium: 0,
+      calcium: 0, iron: 0, potassium: 0, magnesium: 0, zinc: 0,
+      vitaminD: 0, vitaminB12: 0, vitaminC: 0,
+    },
   );
 }
 
@@ -141,10 +153,12 @@ ${day.imageUrls.length > 0 ? `There are also ${day.imageUrls.length} food photo(
 
 For EACH food item (from both text and images), return a JSON array. If an image shows food not described in text, add it as a separate item.
 
+Estimate macros AND key micronutrients (calcium mg, iron mg, potassium mg, magnesium mg, zinc mg, vitamin D mcg, vitamin B12 mcg, vitamin C mg). Use standard USDA values for each food.
+
 Return ONLY valid JSON (no markdown, no code fences):
 {
   "items": [
-    {"description": "<food item>", "calories": <num>, "protein": <g>, "carbs": <g>, "fat": <g>, "fiber": <g>, "sugar": <g>, "sodium": <mg>}
+    {"description": "<food item>", "calories": <num>, "protein": <g>, "carbs": <g>, "fat": <g>, "fiber": <g>, "sugar": <g>, "sodium": <mg>, "calcium": <mg>, "iron": <mg>, "potassium": <mg>, "magnesium": <mg>, "zinc": <mg>, "vitaminD": <mcg>, "vitaminB12": <mcg>, "vitaminC": <mg>}
   ]
 }`,
       });
@@ -173,6 +187,14 @@ Return ONLY valid JSON (no markdown, no code fences):
         fiber: number;
         sugar?: number;
         sodium?: number;
+        calcium?: number;
+        iron?: number;
+        potassium?: number;
+        magnesium?: number;
+        zinc?: number;
+        vitaminD?: number;
+        vitaminB12?: number;
+        vitaminC?: number;
       }) => ({
         description: item.description,
         nutrients: {
@@ -183,6 +205,14 @@ Return ONLY valid JSON (no markdown, no code fences):
           fiber: Math.round(item.fiber || 0),
           sugar: Math.round(item.sugar || 0),
           sodium: Math.round(item.sodium || 0),
+          calcium: Math.round(item.calcium || 0),
+          iron: +((item.iron || 0).toFixed(1)),
+          potassium: Math.round(item.potassium || 0),
+          magnesium: Math.round(item.magnesium || 0),
+          zinc: +((item.zinc || 0).toFixed(1)),
+          vitaminD: +((item.vitaminD || 0).toFixed(1)),
+          vitaminB12: +((item.vitaminB12 || 0).toFixed(2)),
+          vitaminC: Math.round(item.vitaminC || 0),
         },
       }));
 

@@ -12,9 +12,11 @@ import {
   Tooltip,
   ResponsiveContainer,
   Legend,
+  ReferenceLine,
 } from 'recharts';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui';
 import { InBodyEntry } from '@/types';
+import { BODY_GOAL, projectMuscleTarget } from '@/lib/goals';
 
 interface BodyRecompChartProps {
   entries: InBodyEntry[];
@@ -23,6 +25,8 @@ interface BodyRecompChartProps {
 export function BodyRecompChart({ entries }: BodyRecompChartProps) {
   const chartData = useMemo(() => {
     const sorted = [...entries].sort((a, b) => a.date.getTime() - b.date.getTime());
+    if (sorted.length === 0) return [];
+    const firstMonthsAgo = (t: Date) => (t.getTime() - sorted[0].date.getTime()) / (1000 * 60 * 60 * 24 * 30);
     return sorted.map(entry => ({
       date: format(entry.date, 'MMM yy'),
       fullDate: format(entry.date, 'MMM d, yyyy'),
@@ -30,8 +34,13 @@ export function BodyRecompChart({ entries }: BodyRecompChartProps) {
       fat: entry.bodyFatMass || (entry.weight * entry.bodyFatPercentage / 100),
       bodyFatPct: entry.bodyFatPercentage,
       weight: entry.weight,
+      muscleTarget: projectMuscleTarget(sorted[0].muscleMass, firstMonthsAgo(entry.date)),
     }));
   }, [entries]);
+
+  const latest = entries.length > 0 ? [...entries].sort((a, b) => b.date.getTime() - a.date.getTime())[0] : null;
+  const muscleGap = latest ? +(latest.muscleMass - (chartData[chartData.length - 1]?.muscleTarget ?? 0)).toFixed(1) : 0;
+  const bfGap = latest ? +(latest.bodyFatPercentage - BODY_GOAL.targetBodyFatPercentage).toFixed(1) : 0;
 
   const progressStats = useMemo(() => {
     if (chartData.length < 2) return null;
@@ -89,6 +98,19 @@ export function BodyRecompChart({ entries }: BodyRecompChartProps) {
         </div>
       </CardHeader>
       <CardContent>
+        {latest && (
+          <div className="mb-4 p-3 bg-n-surface-raised rounded-nothing-sm">
+            <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-n-text-disabled mb-2">Gap to Recomp Goal</p>
+            <div className="flex flex-wrap gap-4 text-xs">
+              <span className="font-mono text-n-text-secondary">
+                Body Fat: <span className={bfGap <= 0 ? 'text-n-success' : 'text-n-warning'}>{bfGap > 0 ? '+' : ''}{bfGap}%</span> to {BODY_GOAL.targetBodyFatPercentage}%
+              </span>
+              <span className="font-mono text-n-text-secondary">
+                Muscle Pace: <span className={muscleGap >= 0 ? 'text-n-success' : 'text-n-warning'}>{muscleGap >= 0 ? '+' : ''}{muscleGap} lb</span> vs target ({BODY_GOAL.targetMuscleGainLbsPerMonth} lb/mo)
+              </span>
+            </div>
+          </div>
+        )}
         <div className="h-72">
           <ResponsiveContainer width="100%" height="100%">
             <ComposedChart data={chartData} barGap={0}>
@@ -98,7 +120,7 @@ export function BodyRecompChart({ entries }: BodyRecompChartProps) {
               <YAxis yAxisId="pct" orientation="right" fontSize={10} tickLine={false} domain={[0, 30]} fontFamily="Space Mono" />
               <Tooltip
                 formatter={(value, name) => {
-                  const labels: Record<string, string> = { muscle: 'MUSCLE', fat: 'FAT', bodyFatPct: 'BF%', weight: 'WEIGHT' };
+                  const labels: Record<string, string> = { muscle: 'MUSCLE', fat: 'FAT', bodyFatPct: 'BF%', weight: 'WEIGHT', muscleTarget: 'MUSCLE TARGET' };
                   const suffix = name === 'bodyFatPct' ? '%' : ' lbs';
                   return [`${value}${suffix}`, labels[name as string] || name];
                 }}
@@ -107,7 +129,9 @@ export function BodyRecompChart({ entries }: BodyRecompChartProps) {
               <Legend wrapperStyle={{ fontSize: '10px', fontFamily: 'Space Mono' }} />
               <Bar yAxisId="mass" dataKey="muscle" name="Muscle" fill="#4A9E5C" radius={[2, 2, 0, 0]} maxBarSize={40} />
               <Bar yAxisId="mass" dataKey="fat" name="Fat" fill="#D4A843" radius={[2, 2, 0, 0]} maxBarSize={40} />
+              <Line yAxisId="mass" type="monotone" dataKey="muscleTarget" name="Muscle Target" stroke="#4A9E5C" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
               <Line yAxisId="pct" type="monotone" dataKey="bodyFatPct" name="Body Fat %" stroke="#D71921" strokeWidth={2} dot={{ r: 4, fill: '#D71921', strokeWidth: 0 }} />
+              <ReferenceLine yAxisId="pct" y={BODY_GOAL.targetBodyFatPercentage} stroke="#D71921" strokeDasharray="4 4" strokeOpacity={0.6} label={{ value: `Goal ${BODY_GOAL.targetBodyFatPercentage}%`, fill: '#D71921', fontSize: 10, fontFamily: 'Space Mono', position: 'insideTopRight' }} />
             </ComposedChart>
           </ResponsiveContainer>
         </div>

@@ -15,6 +15,7 @@ import {
 } from 'recharts';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui';
 import { Workout } from '@/types';
+import { BODY_GOAL } from '@/lib/goals';
 
 interface StrengthProgressChartProps {
   workouts: Workout[];
@@ -29,6 +30,7 @@ interface ProgressDataPoint {
   legPress?: number;
   avgStrength: number;
   trendLine: number;
+  goalLine: number;
 }
 
 function normalizeForGrouping(name: string): string {
@@ -65,6 +67,7 @@ export function StrengthProgressChart({ workouts }: StrengthProgressChartProps) 
         timestamp: workout.date.getTime(),
         avgStrength: 0,
         trendLine: 0,
+        goalLine: 0,
       };
 
       const strengthValues: number[] = [];
@@ -105,6 +108,14 @@ export function StrengthProgressChart({ workouts }: StrengthProgressChartProps) 
 
       dataPoints.forEach((point, i) => {
         point.trendLine = Math.round(intercept + slope * i);
+      });
+
+      // Goal line — compound from first point at BODY_GOAL strength growth rate per month
+      const first = dataPoints[0];
+      const monthlyMultiplier = 1 + BODY_GOAL.targetStrengthGainPctPerMonth / 100;
+      dataPoints.forEach((point) => {
+        const monthsElapsed = (point.timestamp - first.timestamp) / (1000 * 60 * 60 * 24 * 30);
+        point.goalLine = Math.round(first.avgStrength * Math.pow(monthlyMultiplier, monthsElapsed));
       });
     }
 
@@ -161,19 +172,20 @@ export function StrengthProgressChart({ workouts }: StrengthProgressChartProps) 
               <YAxis fontSize={10} tickLine={false} fontFamily="Space Mono" />
               <Tooltip
                 formatter={(value, name) => {
-                  const labels: Record<string, string> = { chestPress: 'CHEST', squat: 'SQUAT', row: 'ROW', legPress: 'LEG PRESS', avgStrength: 'AVG', trendLine: 'TREND' };
+                  const labels: Record<string, string> = { chestPress: 'CHEST', squat: 'SQUAT', row: 'ROW', legPress: 'LEG PRESS', avgStrength: 'AVG', trendLine: 'TREND', goalLine: 'GOAL' };
                   return [`${value} lbs`, labels[name as string] || name];
                 }}
               />
               <Legend
                 wrapperStyle={{ fontSize: '10px', fontFamily: 'Space Mono' }}
                 formatter={(value) => {
-                  const labels: Record<string, string> = { chestPress: 'CHEST', squat: 'SQUAT', row: 'ROW', legPress: 'LEG PRESS', avgStrength: 'AVG', trendLine: 'TREND' };
+                  const labels: Record<string, string> = { chestPress: 'CHEST', squat: 'SQUAT', row: 'ROW', legPress: 'LEG PRESS', avgStrength: 'AVG', trendLine: 'TREND', goalLine: `GOAL +${BODY_GOAL.targetStrengthGainPctPerMonth}%/mo` };
                   return labels[value] || value;
                 }}
               />
               <Area type="monotone" dataKey="avgStrength" fill="rgba(0,0,0,0.05)" stroke={CHART_COLORS.primary} strokeWidth={2} dot={false} />
               <Line type="monotone" dataKey="trendLine" stroke={CHART_COLORS.trend} strokeWidth={2} strokeDasharray="5 5" dot={false} />
+              <Line type="monotone" dataKey="goalLine" stroke="#5B9BF6" strokeWidth={1.5} strokeDasharray="2 4" dot={false} />
               <Line type="monotone" dataKey="chestPress" stroke={CHART_COLORS.chest} strokeWidth={1.5} dot={{ r: 3 }} connectNulls />
               <Line type="monotone" dataKey="squat" stroke={CHART_COLORS.squat} strokeWidth={1.5} dot={{ r: 3 }} connectNulls />
               <Line type="monotone" dataKey="row" stroke={CHART_COLORS.row} strokeWidth={1.5} dot={{ r: 3 }} connectNulls />

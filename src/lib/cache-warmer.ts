@@ -1,7 +1,7 @@
 /**
  * Background cache warmer for always-on servers (Fly.io).
  * - Warms workouts + advice + food caches on startup and every 6 hours
- * - Sends daily exercise reminder email at random time between 8:00-8:30 PM PST
+ * - Pushes daily workout reminder to ntfy.sh/fitdash at a random minute between 8:00-8:30 PM PST
  */
 
 const WARM_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
@@ -42,24 +42,24 @@ export function startCacheWarmer() {
     }
   }
 
-  async function sendDailyEmail() {
+  async function sendDailyReminder() {
     try {
-      console.log('[email] Sending daily exercise reminder...');
+      console.log('[ntfy] Sending daily exercise reminder...');
       const res = await fetch(`${baseUrl}/api/cron/exercise-reminder`, {
         headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
       });
       if (res.ok) {
         const data = await res.json();
-        console.log(`[email] Sent to ${data.emailsSent?.join(', ')}`);
+        console.log(`[ntfy] Pushed: ${data.title} — ${data.body}`);
       } else {
-        console.error('[email] Failed:', res.status);
+        console.error('[ntfy] Failed:', res.status);
       }
     } catch (err) {
-      console.error('[email] Error:', err);
+      console.error('[ntfy] Error:', err);
     }
   }
 
-  function scheduleDailyEmail() {
+  function scheduleDailyReminder() {
     const now = new Date();
     // Target: 8:00-8:30 PM PST (UTC-7 = 03:00-03:30 UTC, UTC-8 = 04:00-04:30 UTC)
     // Use America/Los_Angeles to handle DST automatically
@@ -76,12 +76,12 @@ export function startCacheWarmer() {
     const pstOffset = pstNow.getTime() - now.getTime();
     const msUntilTarget = target.getTime() - pstNow.getTime();
 
-    console.log(`[email] Next daily email scheduled in ${Math.round(msUntilTarget / 60000)} minutes`);
+    console.log(`[ntfy] Next daily reminder scheduled in ${Math.round(msUntilTarget / 60000)} minutes`);
 
     setTimeout(() => {
-      sendDailyEmail();
+      sendDailyReminder();
       // Schedule next one for tomorrow (re-randomize the minute)
-      scheduleDailyEmail();
+      scheduleDailyReminder();
     }, msUntilTarget);
   }
 
@@ -91,6 +91,6 @@ export function startCacheWarmer() {
   // Refresh caches every 6 hours
   setInterval(warm, WARM_INTERVAL);
 
-  // Schedule daily email
-  scheduleDailyEmail();
+  // Schedule daily ntfy reminder
+  scheduleDailyReminder();
 }
