@@ -7,6 +7,12 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
+function baseUrl() {
+  return process.env.HOSTNAME === '0.0.0.0'
+    ? `http://localhost:${process.env.PORT || 3000}`
+    : `https://${process.env.APP_URL || 'fit-dash.fly.dev'}`;
+}
+
 const DAILY_TARGETS = {
   calcium: 1000,    // mg
   iron: 8,          // mg
@@ -35,9 +41,12 @@ export async function GET(request: Request) {
 
   try {
     let foodData: FoodDay[] = [];
-    if (redis) {
-      const cached = await redis.get('fitdash:food');
-      if (cached) foodData = Array.isArray(cached) ? cached : JSON.parse(cached as string);
+    try {
+      const res = await fetch(`${baseUrl()}/api/food`);
+      const json = await res.json();
+      if (json.success) foodData = json.data || [];
+    } catch (err) {
+      console.error('grocery-list food fetch failed:', err);
     }
 
     const last7 = [...foodData].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 7);

@@ -1,14 +1,17 @@
 import { NextResponse } from 'next/server';
-import { getRedis } from '@/lib/redis';
 import { FoodDay } from '@/types';
 import { BODY_GOAL, targetProteinGrams } from '@/lib/goals';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// Last-seeded InBody weight is ~167.2 lb; uses stored latest-InBody weight if present,
-// otherwise falls back to this constant. Personal single-user app.
 const FALLBACK_WEIGHT_LBS = 167.2;
+
+function baseUrl() {
+  return process.env.HOSTNAME === '0.0.0.0'
+    ? `http://localhost:${process.env.PORT || 3000}`
+    : `https://${process.env.APP_URL || 'fit-dash.fly.dev'}`;
+}
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization');
@@ -16,18 +19,16 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const redis = getRedis();
-
   try {
-    // Today in PST — matches food-log date labels
     const pstTodayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' });
 
     let foodData: FoodDay[] = [];
-    if (redis) {
-      const cached = await redis.get('fitdash:food');
-      if (cached) {
-        foodData = Array.isArray(cached) ? cached : JSON.parse(cached as string);
-      }
+    try {
+      const res = await fetch(`${baseUrl()}/api/food`);
+      const json = await res.json();
+      if (json.success) foodData = json.data || [];
+    } catch (err) {
+      console.error('protein-nudge food fetch failed:', err);
     }
 
     const todayEntry = foodData.find(d => d.date === pstTodayStr);

@@ -7,6 +7,13 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const LAST_SEEN_KEY = 'fitdash:pr_last_seen_date';
+const LAST_SEEN_FALLBACK: { value: string | null } = { value: null };
+
+function baseUrl() {
+  return process.env.HOSTNAME === '0.0.0.0'
+    ? `http://localhost:${process.env.PORT || 3000}`
+    : `https://${process.env.APP_URL || 'fit-dash.fly.dev'}`;
+}
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization');
@@ -15,22 +22,33 @@ export async function GET(request: Request) {
   }
 
   const redis = getRedis();
-  if (!redis) return NextResponse.json({ error: 'Redis not configured' }, { status: 500 });
 
   try {
-    const cached = await redis.get('fitdash:workouts');
-    if (!cached) return NextResponse.json({ message: 'No workouts cached' });
+    // Prefer the notion endpoint (memory → Redis → Notion fallback chain)
+    let workouts: Workout[] = [];
+    try {
+      const res = await fetch(`${baseUrl()}/api/notion`);
+      const json = await res.json();
+      if (json.success) workouts = json.workouts || [];
+    } catch (err) {
+      console.error('pr-check workouts fetch failed:', err);
+    }
 
-    const workouts: Workout[] = Array.isArray(cached)
-      ? cached
-      : JSON.parse(cached as string);
-
-    if (workouts.length === 0) return NextResponse.json({ message: 'Empty workouts' });
+    if (workouts.length === 0) return NextResponse.json({ message: 'No workouts available' });
 
     const sorted = [...workouts].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    const lastSeenStr = await redis.get(LAST_SEEN_KEY);
-    const lastSeen = lastSeenStr ? new Date(lastSeenStr as string) : new Date(0);
+    let lastSeenStr: string | null = null;
+    if (redis) {
+      try {
+        const v = await redis.get(LAST_SEEN_KEY);
+        if (v) lastSeenStr = v as string;
+      } catch (err) {
+        console.error('pr-check redis read failed:', err);
+      }
+    }
+    if (!lastSeenStr) lastSeenStr = LAST_SEEN_FALLBACK.value;
+    const lastSeen = lastSeenStr ? new Date(lastSeenStr) : new Date(0);
     const newest = new Date(sorted[0].date);
 
     // Find new workouts (newer than last seen)
@@ -93,7 +111,12 @@ export async function GET(request: Request) {
     }
 
     // Advance the cursor even if there were no PRs, so we don't re-check the same workouts
-    await redis.set(LAST_SEEN_KEY, newest.toISOString());
+    LAST_SEEN_FALLBACK.value = newest.toISOString();
+    if (redis) {
+      try { await redis.set(LAST_SEEN_KEY, newest.toISOString()); } catch (err) {
+        console.error('pr-check redis write failed:', err);
+      }
+    }
 
     return NextResponse.json({
       success: true,

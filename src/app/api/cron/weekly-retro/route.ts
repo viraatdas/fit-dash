@@ -8,6 +8,12 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
+function baseUrl() {
+  return process.env.HOSTNAME === '0.0.0.0'
+    ? `http://localhost:${process.env.PORT || 3000}`
+    : `https://${process.env.APP_URL || 'fit-dash.fly.dev'}`;
+}
+
 const REDIS_CACHE_KEY = 'fitdash:weekly_retro';
 const REDIS_TTL = 14 * 86400;
 
@@ -25,10 +31,15 @@ export async function GET(request: Request) {
   try {
     let workouts: Workout[] = [];
     let foodData: FoodDay[] = [];
-    if (redis) {
-      const [w, f] = await Promise.all([redis.get('fitdash:workouts'), redis.get('fitdash:food')]);
-      if (w) workouts = Array.isArray(w) ? w : JSON.parse(w as string);
-      if (f) foodData = Array.isArray(f) ? f : JSON.parse(f as string);
+    try {
+      const [wRes, fRes] = await Promise.all([
+        fetch(`${baseUrl()}/api/notion`).then(r => r.json()),
+        fetch(`${baseUrl()}/api/food`).then(r => r.json()),
+      ]);
+      if (wRes.success) workouts = wRes.workouts || [];
+      if (fRes.success) foodData = fRes.data || [];
+    } catch (err) {
+      console.error('weekly-retro context fetch failed:', err);
     }
 
     const now = new Date();
