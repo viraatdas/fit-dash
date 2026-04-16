@@ -14,8 +14,8 @@ import {
 // Lazy load heavy components — only downloaded when their tab is active
 const WorkoutSummary = lazy(() => import('@/components/dashboard/WorkoutSummary').then(m => ({ default: m.WorkoutSummary })));
 const Insights = lazy(() => import('@/components/dashboard/Insights').then(m => ({ default: m.Insights })));
-const ProteinEstimate = lazy(() => import('@/components/dashboard/ProteinEstimate').then(m => ({ default: m.ProteinEstimate })));
 const ExerciseAdvice = lazy(() => import('@/components/dashboard/ExerciseAdvice').then(m => ({ default: m.ExerciseAdvice })));
+const FoodLog = lazy(() => import('@/components/dashboard/FoodLog').then(m => ({ default: m.FoodLog })));
 const StrengthProgressChart = lazy(() => import('@/components/charts/StrengthProgressChart').then(m => ({ default: m.StrengthProgressChart })));
 const WeightProgressChart = lazy(() => import('@/components/charts/WeightProgressChart').then(m => ({ default: m.WeightProgressChart })));
 const CategorySummary = lazy(() => import('@/components/charts/CategorySummary').then(m => ({ default: m.CategorySummary })));
@@ -178,6 +178,7 @@ export default function Dashboard() {
           <TabsList>
             <TabsTrigger value="insights">Insights</TabsTrigger>
             <TabsTrigger value="progress">Progress</TabsTrigger>
+            <TabsTrigger value="food">Food</TabsTrigger>
             <TabsTrigger value="workouts">Workouts</TabsTrigger>
             <TabsTrigger value="body">Body</TabsTrigger>
             <TabsTrigger value="health">Health</TabsTrigger>
@@ -186,8 +187,13 @@ export default function Dashboard() {
           <TabsContent value="insights" className="space-y-6">
             <Suspense fallback={<TabLoading />}>
               <ExerciseAdvice />
-              <ProteinEstimate workouts={workouts} inBodyEntries={inBodyEntries} />
               <Insights workouts={workouts} inBodyEntries={inBodyEntries} />
+            </Suspense>
+          </TabsContent>
+
+          <TabsContent value="food" className="space-y-6">
+            <Suspense fallback={<TabLoading />}>
+              <FoodLog />
             </Suspense>
           </TabsContent>
 
