@@ -1,10 +1,14 @@
 /**
  * Background cache warmer for always-on servers (Fly.io).
  * - Warms workouts + advice + food caches on startup and every 6 hours
- * - Pushes daily workout reminder to ntfy.sh/fitdash at a random minute between 8:00-8:30 PM PST
+ * - After each warm: runs PR check (ntfy on new compound PRs)
+ * - Daily 8:00-8:30 PM PST: workout reminder (ntfy.sh/fitdash)
+ * - Daily 3:00-3:15 PM PST: mid-day protein nudge
+ * - Saturday 10 AM PST: weekly grocery list (LLM) based on micro deficiencies
+ * - Sunday 7 PM PST: weekly retrospective (LLM)
  */
 
-const WARM_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
+const WARM_INTERVAL = 6 * 60 * 60 * 1000;
 let started = false;
 
 export function startCacheWarmer() {
@@ -15,15 +19,29 @@ export function startCacheWarmer() {
     ? `http://localhost:${process.env.PORT || 3000}`
     : null;
 
-  if (!baseUrl) return; // Not on Fly.io / standalone server
+  if (!baseUrl) return;
+
+  const authHeaders = { Authorization: `Bearer ${process.env.CRON_SECRET}` };
+
+  async function callCron(path: string, label: string) {
+    try {
+      console.log(`[${label}] calling ${path}`);
+      const res = await fetch(`${baseUrl}${path}`, { headers: authHeaders });
+      if (res.ok) {
+        const data = await res.json();
+        console.log(`[${label}] ok:`, JSON.stringify(data).slice(0, 240));
+      } else {
+        console.error(`[${label}] failed:`, res.status);
+      }
+    } catch (err) {
+      console.error(`[${label}] error:`, err);
+    }
+  }
 
   async function warm() {
     try {
-      // Warm workouts + advice (cron endpoint handles it all)
       console.log('[cache-warmer] Warming all caches...');
-      const res = await fetch(`${baseUrl}/api/cron/warm-cache`, {
-        headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
-      });
+      const res = await fetch(`${baseUrl}/api/cron/warm-cache`, { headers: authHeaders });
       if (res.ok) {
         const data = await res.json();
         console.log(`[cache-warmer] Workouts done — ${data.workouts} cached`);
@@ -31,66 +49,69 @@ export function startCacheWarmer() {
         console.error('[cache-warmer] Workouts failed:', res.status);
       }
 
-      // Warm food data
       console.log('[cache-warmer] Warming food cache...');
       const foodRes = await fetch(`${baseUrl}/api/food?refresh=1`);
-      if (foodRes.ok) {
-        console.log('[cache-warmer] Food cache warmed');
-      }
+      if (foodRes.ok) console.log('[cache-warmer] Food cache warmed');
     } catch (err) {
       console.error('[cache-warmer] Error:', err);
     }
+
+    // PR check uses the freshly-warmed workouts
+    await callCron('/api/cron/pr-check', 'pr-check');
   }
 
-  async function sendDailyReminder() {
-    try {
-      console.log('[ntfy] Sending daily exercise reminder...');
-      const res = await fetch(`${baseUrl}/api/cron/exercise-reminder`, {
-        headers: { Authorization: `Bearer ${process.env.CRON_SECRET}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        console.log(`[ntfy] Pushed: ${data.title} — ${data.body}`);
-      } else {
-        console.error('[ntfy] Failed:', res.status);
-      }
-    } catch (err) {
-      console.error('[ntfy] Error:', err);
+  // Schedule something daily at a given PST hour, with optional jitter (minutes)
+  function scheduleDaily(hour: number, baseMinute: number, jitterMinutes: number, fn: () => void, label: string) {
+    function next() {
+      const now = new Date();
+      const pstNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+      const target = new Date(pstNow);
+      const jitter = jitterMinutes > 0 ? Math.floor(Math.random() * jitterMinutes) : 0;
+      target.setHours(hour, baseMinute + jitter, Math.floor(Math.random() * 60), 0);
+      if (target <= pstNow) target.setDate(target.getDate() + 1);
+      const msUntilTarget = target.getTime() - pstNow.getTime();
+      console.log(`[${label}] next fire in ${Math.round(msUntilTarget / 60000)} min`);
+      setTimeout(() => {
+        fn();
+        next();
+      }, msUntilTarget);
     }
+    next();
   }
 
-  function scheduleDailyReminder() {
-    const now = new Date();
-    // Target: 8:00-8:30 PM PST (UTC-7 = 03:00-03:30 UTC, UTC-8 = 04:00-04:30 UTC)
-    // Use America/Los_Angeles to handle DST automatically
-    const pstNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
-    const target = new Date(pstNow);
-    target.setHours(20, Math.floor(Math.random() * 30), Math.floor(Math.random() * 60), 0);
-
-    // If target time already passed today, schedule for tomorrow
-    if (target <= pstNow) {
-      target.setDate(target.getDate() + 1);
+  // Schedule weekly at PST day-of-week + hour
+  function scheduleWeekly(dayOfWeek: number, hour: number, minute: number, fn: () => void, label: string) {
+    function next() {
+      const now = new Date();
+      const pstNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' }));
+      const target = new Date(pstNow);
+      target.setHours(hour, minute, 0, 0);
+      const diffDays = (dayOfWeek - pstNow.getDay() + 7) % 7;
+      target.setDate(pstNow.getDate() + diffDays);
+      if (target <= pstNow) target.setDate(target.getDate() + 7);
+      const msUntilTarget = target.getTime() - pstNow.getTime();
+      console.log(`[${label}] next fire in ${Math.round(msUntilTarget / 60000)} min`);
+      setTimeout(() => {
+        fn();
+        next();
+      }, msUntilTarget);
     }
-
-    // Convert back to UTC ms from now
-    const pstOffset = pstNow.getTime() - now.getTime();
-    const msUntilTarget = target.getTime() - pstNow.getTime();
-
-    console.log(`[ntfy] Next daily reminder scheduled in ${Math.round(msUntilTarget / 60000)} minutes`);
-
-    setTimeout(() => {
-      sendDailyReminder();
-      // Schedule next one for tomorrow (re-randomize the minute)
-      scheduleDailyReminder();
-    }, msUntilTarget);
+    next();
   }
 
-  // Warm caches after a short delay
+  // Initial + periodic warm
   setTimeout(warm, 5000);
-
-  // Refresh caches every 6 hours
   setInterval(warm, WARM_INTERVAL);
 
-  // Schedule daily ntfy reminder
-  scheduleDailyReminder();
+  // Daily 8:00-8:30 PM PST — workout reminder
+  scheduleDaily(20, 0, 30, () => callCron('/api/cron/exercise-reminder', 'reminder'), 'reminder');
+
+  // Daily 3:00-3:15 PM PST — protein nudge
+  scheduleDaily(15, 0, 15, () => callCron('/api/cron/protein-nudge', 'protein-nudge'), 'protein-nudge');
+
+  // Saturday 10 AM PST — grocery list
+  scheduleWeekly(6, 10, 0, () => callCron('/api/cron/grocery-list', 'grocery-list'), 'grocery-list');
+
+  // Sunday 7 PM PST — weekly retro
+  scheduleWeekly(0, 19, 0, () => callCron('/api/cron/weekly-retro', 'weekly-retro'), 'weekly-retro');
 }
