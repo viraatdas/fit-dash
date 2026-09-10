@@ -16,6 +16,7 @@ import {
 import { Card, CardHeader, CardTitle, CardContent, Button } from '@/components/ui';
 import { DailyHealth } from '@/types';
 import { format, parseISO } from 'date-fns';
+import { RecoveryCard } from '@/components/charts/RecoveryCard';
 
 interface HealthChartProps {
   data: DailyHealth[];
@@ -135,6 +136,9 @@ export function HealthChart({ data, onDataUpdate }: HealthChartProps) {
 
   return (
     <div className="space-y-6">
+      {/* Recovery score */}
+      <RecoveryCard data={data} />
+
       {/* Upload Button */}
       <div className="flex justify-end items-center">
         <input
@@ -240,6 +244,41 @@ export function HealthChart({ data, onDataUpdate }: HealthChartProps) {
                     stroke="#D71921"
                     strokeWidth={2}
                     dot={{ r: 3, fill: '#D71921', strokeWidth: 0 }}
+                    connectNulls
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* HRV Chart */}
+      {chartData.some(d => d.heartRateVariability) && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Heart Rate Variability</CardTitle>
+            <p className="text-xs text-n-text-disabled mt-1">Higher is generally better — key input to your recovery score</p>
+          </CardHeader>
+          <CardContent>
+            <div className="h-48 sm:h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" fontSize={10} tickLine={false} fontFamily="Space Mono" />
+                  <YAxis fontSize={10} tickLine={false} fontFamily="Space Mono" tickFormatter={(v) => `${v}ms`} />
+                  <Tooltip
+                    formatter={(value) => [`${value} ms`, 'HRV']}
+                    labelFormatter={(_, payload) => payload?.[0]?.payload?.fullDate || ''}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="heartRateVariability"
+                    name="HRV"
+                    fill="rgba(0,0,0,0.05)"
+                    stroke="#4A9E5C"
+                    strokeWidth={2}
+                    dot={{ r: 3, fill: '#4A9E5C', strokeWidth: 0 }}
                     connectNulls
                   />
                 </ComposedChart>
