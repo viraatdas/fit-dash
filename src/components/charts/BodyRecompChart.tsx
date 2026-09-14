@@ -17,42 +17,69 @@ import {
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui';
 import { InBodyEntry } from '@/types';
 import { BODY_GOAL, projectMuscleTarget } from '@/lib/goals';
+import { DexaBfDot } from './DexaBfDot';
 
 interface BodyRecompChartProps {
   entries: InBodyEntry[];
 }
 
 export function BodyRecompChart({ entries }: BodyRecompChartProps) {
+  const sortedAsc = useMemo(() => [...entries].sort((a, b) => a.date.getTime() - b.date.getTime()), [entries]);
+  // Earliest entry with a real muscle-mass reading — the anchor for the muscle-target projection line.
+  const muscleAnchor = useMemo(() => sortedAsc.find(e => e.muscleMass != null) ?? null, [sortedAsc]);
+
   const chartData = useMemo(() => {
-    const sorted = [...entries].sort((a, b) => a.date.getTime() - b.date.getTime());
-    if (sorted.length === 0) return [];
-    const firstMonthsAgo = (t: Date) => (t.getTime() - sorted[0].date.getTime()) / (1000 * 60 * 60 * 24 * 30);
-    return sorted.map(entry => ({
-      date: format(entry.date, 'MMM yy'),
-      fullDate: format(entry.date, 'MMM d, yyyy'),
-      muscle: entry.muscleMass,
-      fat: entry.bodyFatMass || (entry.weight * entry.bodyFatPercentage / 100),
-      bodyFatPct: entry.bodyFatPercentage,
-      weight: entry.weight,
-      muscleTarget: projectMuscleTarget(sorted[0].muscleMass, firstMonthsAgo(entry.date)),
-    }));
-  }, [entries]);
+    if (sortedAsc.length === 0 || !muscleAnchor) return [];
+    const monthsAgo = (t: Date) => (t.getTime() - muscleAnchor.date.getTime()) / (1000 * 60 * 60 * 24 * 30);
+    return sortedAsc.map(entry => {
+      const isDexa = entry.source === 'dexa';
+      return {
+        date: isDexa && entry.dateUnknown ? 'DEXA' : format(entry.date, 'MMM yy'),
+        fullDate: isDexa && entry.dateUnknown ? 'DEXA · date unknown' : format(entry.date, 'MMM d, yyyy'),
+        muscle: entry.muscleMass,
+        fat: entry.bodyFatMass ?? (entry.weight != null ? entry.weight * entry.bodyFatPercentage / 100 : undefined),
+        bodyFatPct: entry.bodyFatPercentage,
+        weight: entry.weight,
+        muscleTarget: projectMuscleTarget(muscleAnchor.muscleMass as number, monthsAgo(entry.date)),
+        source: entry.source ?? 'inbody',
+      };
+    });
+  }, [sortedAsc, muscleAnchor]);
+
+  // InBody-only view of the chart data — used for mass/BF% trend deltas so we
+  // never compute a change across measurement methods (InBody vs DEXA).
+  const inBodyChartData = useMemo(() => chartData.filter(d => d.source !== 'dexa'), [chartData]);
 
   const latest = entries.length > 0 ? [...entries].sort((a, b) => b.date.getTime() - a.date.getTime())[0] : null;
-  const muscleGap = latest ? +(latest.muscleMass - (chartData[chartData.length - 1]?.muscleTarget ?? 0)).toFixed(1) : 0;
+  // Most recent entry that actually has a muscle-mass reading (DEXA doesn't) —
+  // compared against the target projected to that same date.
+  const latestWithMuscle = useMemo(
+    () => (entries.length > 0 ? [...entries].filter(e => e.muscleMass != null).sort((a, b) => b.date.getTime() - a.date.getTime())[0] ?? null : null),
+    [entries],
+  );
+  const muscleGap = latestWithMuscle && muscleAnchor
+    ? +(
+        (latestWithMuscle.muscleMass as number) -
+        projectMuscleTarget(muscleAnchor.muscleMass as number, (latestWithMuscle.date.getTime() - muscleAnchor.date.getTime()) / (1000 * 60 * 60 * 24 * 30))
+      ).toFixed(1)
+    : 0;
+  // "Gap to goal" always uses the current, most authoritative body-fat reading (DEXA when present).
   const bfGap = latest ? +(latest.bodyFatPercentage - BODY_GOAL.targetBodyFatPercentage).toFixed(1) : 0;
+  const currentIsDexa = latest?.source === 'dexa';
 
   const progressStats = useMemo(() => {
-    if (chartData.length < 2) return null;
-    const first = chartData[0];
-    const last = chartData[chartData.length - 1];
+    // InBody-to-InBody only — never diff a DEXA reading against a bioimpedance one.
+    if (inBodyChartData.length < 2) return null;
+    const first = inBodyChartData[0];
+    const last = inBodyChartData[inBodyChartData.length - 1];
+    if (first.muscle == null || last.muscle == null || first.fat == null || last.fat == null || first.weight == null || last.weight == null) return null;
     return {
       muscleChange: (last.muscle - first.muscle).toFixed(1),
       fatChange: (last.fat - first.fat).toFixed(1),
       bfChange: (last.bodyFatPct - first.bodyFatPct).toFixed(1),
       weightChange: (last.weight - first.weight).toFixed(1),
     };
-  }, [chartData]);
+  }, [inBodyChartData]);
 
   if (chartData.length === 0) {
     return (
@@ -109,6 +136,11 @@ export function BodyRecompChart({ entries }: BodyRecompChartProps) {
                 Muscle Pace: <span className={muscleGap >= 0 ? 'text-n-success' : 'text-n-warning'}>{muscleGap >= 0 ? '+' : ''}{muscleGap} lb</span> vs target ({BODY_GOAL.targetMuscleGainLbsPerMonth} lb/mo)
               </span>
             </div>
+            {currentIsDexa && (
+              <p className="font-mono text-[10px] text-n-text-disabled mt-2 leading-relaxed">
+                Body Fat is from a DEXA scan (date unknown) — DEXA typically reads several points higher than InBody&apos;s bioimpedance method, so the jump from the last InBody reading is mostly measurement method, not fat gained.
+              </p>
+            )}
           </div>
         )}
         <div className="h-72">
@@ -130,7 +162,7 @@ export function BodyRecompChart({ entries }: BodyRecompChartProps) {
               <Bar yAxisId="mass" dataKey="muscle" name="Muscle" fill="#4A9E5C" radius={[2, 2, 0, 0]} maxBarSize={40} />
               <Bar yAxisId="mass" dataKey="fat" name="Fat" fill="#D4A843" radius={[2, 2, 0, 0]} maxBarSize={40} />
               <Line yAxisId="mass" type="monotone" dataKey="muscleTarget" name="Muscle Target" stroke="#4A9E5C" strokeWidth={1.5} strokeDasharray="5 5" dot={false} />
-              <Line yAxisId="pct" type="monotone" dataKey="bodyFatPct" name="Body Fat %" stroke="#D71921" strokeWidth={2} dot={{ r: 4, fill: '#D71921', strokeWidth: 0 }} />
+              <Line yAxisId="pct" type="monotone" dataKey="bodyFatPct" name="Body Fat %" stroke="#D71921" strokeWidth={2} dot={<DexaBfDot defaultColor="#D71921" />} />
               <ReferenceLine yAxisId="pct" y={BODY_GOAL.targetBodyFatPercentage} stroke="#D71921" strokeDasharray="4 4" strokeOpacity={0.6} label={{ value: `Goal ${BODY_GOAL.targetBodyFatPercentage}%`, fill: '#D71921', fontSize: 10, fontFamily: 'Space Mono', position: 'insideTopRight' }} />
             </ComposedChart>
           </ResponsiveContainer>

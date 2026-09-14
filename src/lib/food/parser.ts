@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateText, extractJson, isLLMConfigured, type LLMImage } from '@/lib/llm';
 import { FoodDay, FoodItem, NutrientInfo } from '@/types';
 
 interface NotionBlock {
@@ -85,7 +85,7 @@ export function parseFoodBlocks(blocks: NotionBlock[]): RawFoodDay[] {
   return days;
 }
 
-async function fetchImageAsBase64(url: string): Promise<{ data: string; mimeType: string } | null> {
+async function fetchImageAsBase64(url: string): Promise<LLMImage | null> {
   try {
     const res = await fetch(url);
     if (!res.ok) return null;
@@ -95,6 +95,25 @@ async function fetchImageAsBase64(url: string): Promise<{ data: string; mimeType
   } catch {
     return null;
   }
+}
+
+interface RawNutrientItem {
+  description: string;
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+  fiber: number;
+  sugar?: number;
+  sodium?: number;
+  calcium?: number;
+  iron?: number;
+  potassium?: number;
+  magnesium?: number;
+  zinc?: number;
+  vitaminD?: number;
+  vitaminB12?: number;
+  vitaminC?: number;
 }
 
 function sumNutrients(items: FoodItem[]): NutrientInfo {
@@ -124,32 +143,36 @@ function sumNutrients(items: FoodItem[]): NutrientInfo {
   );
 }
 
-export async function estimateNutrients(rawDays: RawFoodDay[]): Promise<FoodDay[]> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return [];
+// Notion image URLs are temporary and must be downloaded per-day; cap how many we send
+// per LLM call to bound the request payload.
+const MAX_IMAGES_PER_DAY = 4;
 
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+export async function estimateNutrients(rawDays: RawFoodDay[]): Promise<FoodDay[]> {
+  if (!isLLMConfigured()) return [];
 
   const results: FoodDay[] = [];
 
   for (const day of rawDays) {
     try {
       // Build parts for the prompt — include images if available
-      const parts: Array<{ text: string } | { inlineData: { data: string; mimeType: string } }> = [];
+      const imageUrls = day.imageUrls.slice(0, MAX_IMAGES_PER_DAY);
+      const images: LLMImage[] = [];
+      for (const imageUrl of imageUrls) {
+        const imageData = await fetchImageAsBase64(imageUrl);
+        if (imageData) images.push(imageData);
+      }
 
       // Add text prompt
       const foodDescriptions = day.texts.length > 0
         ? day.texts.map((t, i) => `${i + 1}. ${t}`).join('\n')
         : 'See images below';
 
-      parts.push({
-        text: `Estimate the nutritional content of these food items consumed on ${day.date}. Be realistic with portion sizes based on typical servings.
+      const prompt = `Estimate the nutritional content of these food items consumed on ${day.date}. Be realistic with portion sizes based on typical servings.
 
 Food items described:
 ${foodDescriptions}
 
-${day.imageUrls.length > 0 ? `There are also ${day.imageUrls.length} food photo(s) attached. Analyze them and include their contents.` : ''}
+${images.length > 0 ? `There are also ${images.length} food photo(s) attached. Analyze them and include their contents.` : ''}
 
 For EACH food item (from both text and images), return a JSON array. If an image shows food not described in text, add it as a separate item.
 
@@ -160,42 +183,14 @@ Return ONLY valid JSON (no markdown, no code fences):
   "items": [
     {"description": "<food item>", "calories": <num>, "protein": <g>, "carbs": <g>, "fat": <g>, "fiber": <g>, "sugar": <g>, "sodium": <mg>, "calcium": <mg>, "iron": <mg>, "potassium": <mg>, "magnesium": <mg>, "zinc": <mg>, "vitaminD": <mcg>, "vitaminB12": <mcg>, "vitaminC": <mg>}
   ]
-}`,
-      });
+}`;
 
-      // Add images as inline data (Notion URLs are temporary, must download)
-      for (const imageUrl of day.imageUrls) {
-        const imageData = await fetchImageAsBase64(imageUrl);
-        if (imageData) {
-          parts.push({ inlineData: imageData });
-        }
-      }
+      const text = await generateText(prompt, { jsonObject: true, images });
 
-      const result = await model.generateContent(parts);
-      const text = result.response.text();
+      const parsed = extractJson<{ items?: RawNutrientItem[] }>(text, 'object');
+      if (!parsed) continue;
 
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) continue;
-
-      const parsed = JSON.parse(jsonMatch[0]);
-      const items: FoodItem[] = (parsed.items || []).map((item: {
-        description: string;
-        calories: number;
-        protein: number;
-        carbs: number;
-        fat: number;
-        fiber: number;
-        sugar?: number;
-        sodium?: number;
-        calcium?: number;
-        iron?: number;
-        potassium?: number;
-        magnesium?: number;
-        zinc?: number;
-        vitaminD?: number;
-        vitaminB12?: number;
-        vitaminC?: number;
-      }) => ({
+      const items: FoodItem[] = (parsed.items || []).map((item) => ({
         description: item.description,
         nutrients: {
           calories: Math.round(item.calories || 0),

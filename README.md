@@ -106,3 +106,64 @@ Lat Pulldown: 120x12, 140x10
 - Tailwind CSS
 - Recharts
 - @notionhq/client
+
+## Code-Control MCP API
+
+This app exposes an authenticated MCP-style code-control endpoint for local bots and automations.
+
+### Authentication
+
+Use one of:
+
+```bash
+Authorization: Bearer <MCP_API_KEY>
+x-api-key: <MCP_API_KEY>
+?key=<MCP_API_KEY>
+```
+
+Local development can read the key from `.mcp-api-key`. Deployments should set `MCP_API_KEY` as an environment variable.
+
+### MCP endpoint
+
+`POST /api/mcp` supports:
+
+- `initialize`
+- `ping`
+- `tools/list`
+- `tools/call`
+
+Example:
+
+```bash
+curl -X POST http://localhost:3000/api/mcp \
+  -H "Authorization: Bearer $MCP_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"project.list_files","arguments":{"glob":"src/**/*.tsx","limit":20}}}'
+```
+
+Available tools:
+
+- `project.list_files`
+- `project.read_file`
+- `project.write_file`
+- `project.patch_file`
+- `project.delete_file`
+- `project.search`
+- `theme.get_tokens`
+- `theme.update_tokens`
+
+Secret files such as `.env*` and `.mcp-api-key` are blocked by default. Set `MCP_ALLOW_SECRET_FILE_ACCESS=true` only if you intentionally want the bot to access those files.
+
+### Moobot bridge
+
+For URL-based bot integrations, call `GET /api/moobot` with `tool` and either individual arguments or an encoded JSON `args` object:
+
+```bash
+curl "http://localhost:3000/api/moobot?key=$MCP_API_KEY&tool=theme.get_tokens&mode=dark"
+```
+
+Patch a file:
+
+```bash
+curl "http://localhost:3000/api/moobot?key=$MCP_API_KEY&tool=project.patch_file&path=src/app/page.tsx&search=Fitness%20Dashboard&replace=Fit%20Dash"
+```

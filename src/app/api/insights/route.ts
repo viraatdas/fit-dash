@@ -1,17 +1,13 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateText, extractJson, isLLMConfigured } from '@/lib/llm';
 
 export async function POST(request: Request) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: 'Gemini API key not configured' }, { status: 500 });
+  if (!isLLMConfigured()) {
+    return NextResponse.json({ error: 'LLM not configured' }, { status: 500 });
   }
 
   try {
     const { workouts, inBody, prompt: customPrompt } = await request.json();
-
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     const prompt = customPrompt || `You are a fitness coach analyzing a client's workout data. Their goals are:
 1. Aesthetically look good (build muscle, reduce body fat)
@@ -35,15 +31,13 @@ Respond in JSON format:
   "focus_areas": ["Focus area 1", "Focus area 2", ...]
 }`;
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const text = await generateText(prompt, { jsonObject: true });
 
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
+    const insights = extractJson<Record<string, unknown>>(text, 'object');
+    if (!insights) {
       throw new Error('Could not parse AI response');
     }
 
-    const insights = JSON.parse(jsonMatch[0]);
     return NextResponse.json(insights);
   } catch (error) {
     console.error('AI insights error:', error);

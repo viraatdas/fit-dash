@@ -77,3 +77,69 @@ export function computeRecovery(data: DailyHealth[]): RecoveryResult {
     baselineDays,
   };
 }
+
+/**
+ * Per-day rolling baseline series, for rendering a shaded baseline band
+ * behind a resting-HR/HRV sparkline across a whole date range (rather than
+ * just "today" like computeRecovery above).
+ *
+ * Same baseline definition as computeRecovery: for a given day, the
+ * baseline is the mean ± 1 SD of that metric over the PRIOR 7 days (older,
+ * excluding the day itself) — generalized to every day in `data` instead of
+ * only the newest. `data` must be newest-first, same convention as
+ * computeRecovery.
+ *
+ * A day's band is null (no shading) when fewer than MIN_BASELINE_DAYS of
+ * its prior 7 days have a value for that metric.
+ */
+export const MIN_BASELINE_DAYS = 3;
+
+export interface BaselineDayPoint {
+  date: string;
+  restingHr: number | null;
+  hrv: number | null;
+  rhrBaselineMean: number | null;
+  rhrBaselineLow: number | null; // mean - 1 SD
+  rhrBaselineHigh: number | null; // mean + 1 SD
+  hrvBaselineMean: number | null;
+  hrvBaselineLow: number | null;
+  hrvBaselineHigh: number | null;
+}
+
+function stddev(values: number[], mean: number): number {
+  if (values.length === 0) return 0;
+  const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
+  return Math.sqrt(variance);
+}
+
+export function computeBaselineSeries(data: DailyHealth[]): BaselineDayPoint[] {
+  if (!data) return [];
+
+  return data.map((day, i) => {
+    // Days OLDER than `day` (data is newest-first, so these are the next 7 entries).
+    const priorWindow = data.slice(i + 1, i + 8);
+    const rhrValues = priorWindow
+      .map(d => d.restingHeartRate)
+      .filter((v): v is number => typeof v === 'number' && !Number.isNaN(v));
+    const hrvValues = priorWindow
+      .map(d => d.heartRateVariability)
+      .filter((v): v is number => typeof v === 'number' && !Number.isNaN(v));
+
+    const rhrMean = rhrValues.length >= MIN_BASELINE_DAYS ? avg(rhrValues) : null;
+    const hrvMean = hrvValues.length >= MIN_BASELINE_DAYS ? avg(hrvValues) : null;
+    const rhrSD = rhrMean !== null ? stddev(rhrValues, rhrMean) : null;
+    const hrvSD = hrvMean !== null ? stddev(hrvValues, hrvMean) : null;
+
+    return {
+      date: day.date,
+      restingHr: day.restingHeartRate ?? null,
+      hrv: day.heartRateVariability ?? null,
+      rhrBaselineMean: rhrMean,
+      rhrBaselineLow: rhrMean !== null && rhrSD !== null ? rhrMean - rhrSD : null,
+      rhrBaselineHigh: rhrMean !== null && rhrSD !== null ? rhrMean + rhrSD : null,
+      hrvBaselineMean: hrvMean,
+      hrvBaselineLow: hrvMean !== null && hrvSD !== null ? hrvMean - hrvSD : null,
+      hrvBaselineHigh: hrvMean !== null && hrvSD !== null ? hrvMean + hrvSD : null,
+    };
+  });
+}

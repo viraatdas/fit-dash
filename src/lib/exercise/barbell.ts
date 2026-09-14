@@ -7,7 +7,6 @@ const ALWAYS_PLATE_ONLY = new Set([
   'Incline Bench Press',
   'Decline Bench Press',
   'Close Grip Bench Press',
-  'Chest Press',
   'Squat',
   'Back Squat',
   'Front Squat',
@@ -26,12 +25,29 @@ const ALWAYS_PLATE_ONLY = new Set([
   'Hip Thrust',
 ]);
 
-// Exercises where the user USED to include bar weight but recently switched to plate-only.
-// For these, only add bar weight when the x2 per-side format is detected.
-const RECENTLY_SWITCHED = new Set([
+// Exercises the user logs under the SAME name for two different pieces of equipment
+// (e.g. a plate-loaded/barbell version some days, a fixed-stack machine other days),
+// distinguished only by whether the per-side "Nx2" plate format was used that session.
+// For these, only add bar weight when that format is actually detected — never assume.
+//
+// 'Chest Press' lives here (not in ALWAYS_PLATE_ONLY) because the data shows the exact
+// same raw name "Chest press" used for a genuine plate-loaded press (logged as "35x2",
+// "45x2" etc.) AND for a chest press *machine* (logged as a single already-total number
+// like "100", "145" lbs — confirmed by a sibling entry explicitly labeled
+// "Chest press (machine)" at the same ~100-150 lb scale). Unconditionally adding +45
+// bar weight here silently inflated every un-annotated machine session by 45 lbs.
+const FORMAT_DEPENDENT_BAR_WEIGHT = new Set([
   'Calf Raise',
   'Standing Calf Raise',
+  'Chest Press',
 ]);
+
+/** True when bar-weight addition for this canonical name depends on the logged set format
+ *  (only add when per-side "x2" plate notation was detected that session) rather than being
+ *  a fixed yes/no based on the exercise name alone. */
+export function isFormatDependentBarWeight(normalizedName: string): boolean {
+  return FORMAT_DEPENDENT_BAR_WEIGHT.has(normalizedName);
+}
 
 // Keywords in the raw name that mean it's NOT a barbell exercise
 const NON_BARBELL_KEYWORDS = [
@@ -58,13 +74,13 @@ export function usesBarbell(normalizedName: string, rawName?: string): boolean {
     return true;
   }
 
-  return ALWAYS_PLATE_ONLY.has(normalizedName) || RECENTLY_SWITCHED.has(normalizedName);
+  return ALWAYS_PLATE_ONLY.has(normalizedName) || FORMAT_DEPENDENT_BAR_WEIGHT.has(normalizedName);
 }
 
 /**
  * Determines if bar weight should be added, considering the set format.
  * - ALWAYS_PLATE_ONLY exercises: always add bar weight
- * - RECENTLY_SWITCHED exercises: only add if x2 per-side format was detected
+ * - FORMAT_DEPENDENT_BAR_WEIGHT exercises: only add if x2 per-side format was detected
  * - Others: check raw name keywords
  */
 export function shouldAddBarWeight(
@@ -80,9 +96,9 @@ export function shouldAddBarWeight(
   }
 
   // Explicit barbell keyword → always add (user clearly uses barbell)
-  // But for RECENTLY_SWITCHED, only if plate format detected
+  // But for FORMAT_DEPENDENT_BAR_WEIGHT, only if plate format detected
   if (BARBELL_KEYWORDS.some(kw => rawLower.includes(kw))) {
-    if (RECENTLY_SWITCHED.has(normalizedName)) {
+    if (FORMAT_DEPENDENT_BAR_WEIGHT.has(normalizedName)) {
       return hasPlatePerSideFormat;
     }
     return true;
@@ -93,8 +109,8 @@ export function shouldAddBarWeight(
     return true;
   }
 
-  // RECENTLY_SWITCHED: only add bar weight when x2 format detected
-  if (RECENTLY_SWITCHED.has(normalizedName)) {
+  // FORMAT_DEPENDENT_BAR_WEIGHT: only add bar weight when x2 format detected
+  if (FORMAT_DEPENDENT_BAR_WEIGHT.has(normalizedName)) {
     return hasPlatePerSideFormat;
   }
 

@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui';
 import { Workout, InBodyEntry } from '@/types';
 import { differenceInDays, format } from 'date-fns';
+import { filterOutliers } from '@/lib/exercise/strength';
 
 interface InsightsProps {
   workouts: Workout[];
@@ -53,6 +54,15 @@ export function Insights({ workouts, inBodyEntries }: InsightsProps) {
           exerciseHistory[e.normalizedName].performances.push({ date: w.date, maxWeight, bestSet, totalSets: validSets.length });
         }
       });
+    });
+
+    // Safety net: drop a session that's a wild multiple of that exercise's own recent
+    // baseline before it can set a bogus target or "rebuild to previous max" notice — not
+    // a substitute for correct parsing, just a last line of defense against whatever slips
+    // through (an equipment-format edge case, a typo, etc.).
+    Object.values(exerciseHistory).forEach(exercise => {
+      const chronological = [...exercise.performances].sort((a, b) => a.date.getTime() - b.date.getTime());
+      exercise.performances = filterOutliers(chronological, p => p.maxWeight);
     });
 
     const targets: ExerciseTarget[] = [];
@@ -160,21 +170,28 @@ export function Insights({ workouts, inBodyEntries }: InsightsProps) {
       totalSets += exerciseSets;
       totalReps += exerciseReps;
 
-      let lastSessionMax = 0;
-      let lastSessionReps = 0;
-      let allTimePR = 0;
-      let timesPerformed = 0;
-
+      // previousWorkouts is most-recent-first, so collecting in that order means index 0
+      // (if any) is literally the last time this exercise was performed.
+      const historicalPerformances: Array<{ date: Date; maxWeight: number; reps: number }> = [];
       for (const workout of previousWorkouts) {
         const prevExercise = workout.exercises.find(e => e.normalizedName === exercise.normalizedName);
         if (prevExercise && prevExercise.sets.length > 0) {
           const prevMax = Math.max(...prevExercise.sets.map(s => s.weight));
           const prevReps = prevExercise.sets.reduce((sum, s) => sum + s.reps, 0);
-          if (prevMax > allTimePR) allTimePR = prevMax;
-          if (timesPerformed === 0) { lastSessionMax = prevMax; lastSessionReps = prevReps; }
-          timesPerformed++;
+          historicalPerformances.push({ date: workout.date, maxWeight: prevMax, reps: prevReps });
         }
       }
+
+      const timesPerformed = historicalPerformances.length;
+      const lastSessionMax = timesPerformed > 0 ? historicalPerformances[0].maxWeight : 0;
+      const lastSessionReps = timesPerformed > 0 ? historicalPerformances[0].reps : 0;
+
+      // Robust (outlier-guarded) all-time PR baseline — a single bad historical session
+      // (equipment mismatch, typo, etc.) shouldn't be able to either fake an "ALL-TIME PR!"
+      // the day it was logged, or permanently block a real one afterwards.
+      const chronologicalHistory = [...historicalPerformances].sort((a, b) => a.date.getTime() - b.date.getTime());
+      const cleanHistory = filterOutliers(chronologicalHistory, p => p.maxWeight);
+      const allTimePR = Math.max(0, ...cleanHistory.map(p => p.maxWeight));
 
       const weightDelta = maxWeight - lastSessionMax;
       const repsDelta = exerciseReps - lastSessionReps;
@@ -272,8 +289,14 @@ export function Insights({ workouts, inBodyEntries }: InsightsProps) {
       result.push({ type: 'strength', title: 'Break Plateaus', message: `${stagnantExercises.length} exercises stagnant. Try varying rep ranges.`, priority: 'medium' });
     }
 
-    if (inBodyEntries.length >= 2) {
-      const sorted = [...inBodyEntries].sort((a, b) => a.date.getTime() - b.date.getTime());
+    // Muscle/fat-mass deltas need weight + muscle mass, which only InBody's
+    // bioimpedance scan measures (a DEXA reading may have neither) — restrict to
+    // entries that actually have both so this never diffs across methods.
+    const massMeasurements = inBodyEntries.filter(
+      (e): e is typeof e & { weight: number; muscleMass: number } => e.weight != null && e.muscleMass != null
+    );
+    if (massMeasurements.length >= 2) {
+      const sorted = [...massMeasurements].sort((a, b) => a.date.getTime() - b.date.getTime());
       const first = sorted[0];
       const last = sorted[sorted.length - 1];
       const muscleChange = last.muscleMass - first.muscleMass;

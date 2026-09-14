@@ -25,6 +25,7 @@ export function InBodyHistory({ entries, onDelete }: InBodyHistoryProps) {
             <thead className="border-b border-n-border-visible">
               <tr>
                 <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.08em] text-n-text-secondary">Date</th>
+                <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.08em] text-n-text-secondary">Source</th>
                 <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.08em] text-n-text-secondary">Weight</th>
                 <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.08em] text-n-text-secondary">Body Fat</th>
                 <th className="px-4 py-3 text-left font-mono text-[10px] uppercase tracking-[0.08em] text-n-text-secondary">Muscle</th>
@@ -33,34 +34,42 @@ export function InBodyHistory({ entries, onDelete }: InBodyHistoryProps) {
               </tr>
             </thead>
             <tbody className="divide-y divide-n-border">
-              {entries.map((entry) => (
-                <tr key={entry.id} className="hover:bg-n-surface-raised transition-colors duration-150">
-                  <td className="px-4 py-3 font-mono text-sm text-n-text-primary">
-                    {format(entry.date, 'MMM d, yyyy')}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-sm text-n-text-primary">
-                    {entry.weight}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-sm text-n-text-primary">
-                    {entry.bodyFatPercentage}%
-                  </td>
-                  <td className="px-4 py-3 font-mono text-sm text-n-text-primary">
-                    {entry.muscleMass}
-                  </td>
-                  <td className="px-4 py-3 font-mono text-sm text-n-text-disabled">
-                    {entry.bmi ?? '–'}
-                  </td>
-                  <td className="px-4 py-3">
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => onDelete(entry.id)}
-                    >
-                      Delete
-                    </Button>
-                  </td>
-                </tr>
-              ))}
+              {entries.map((entry) => {
+                const isDexa = entry.source === 'dexa';
+                return (
+                  <tr key={entry.id} className="hover:bg-n-surface-raised transition-colors duration-150">
+                    <td className="px-4 py-3 font-mono text-sm text-n-text-primary">
+                      {isDexa && entry.dateUnknown ? 'Date unknown' : format(entry.date, 'MMM d, yyyy')}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-sm">
+                      <span className={`px-2 py-0.5 rounded-pill border font-mono text-[9px] uppercase tracking-[0.06em] ${isDexa ? 'text-n-accent border-n-accent' : 'text-n-text-disabled border-n-border-visible'}`}>
+                        {isDexa ? 'DEXA' : 'InBody'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 font-mono text-sm text-n-text-primary">
+                      {entry.weight ?? '–'}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-sm text-n-text-primary">
+                      {entry.bodyFatPercentage}%
+                    </td>
+                    <td className="px-4 py-3 font-mono text-sm text-n-text-primary">
+                      {entry.muscleMass ?? '–'}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-sm text-n-text-disabled">
+                      {entry.bmi ?? '–'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => onDelete(entry.id)}
+                      >
+                        Delete
+                      </Button>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

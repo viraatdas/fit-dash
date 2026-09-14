@@ -1,10 +1,15 @@
 import { NextResponse } from 'next/server';
-import { getRedis } from '@/lib/redis';
 import { Workout } from '@/types';
 import { format, differenceInDays } from 'date-fns';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+function baseUrl() {
+  return process.env.HOSTNAME === '0.0.0.0'
+    ? `http://localhost:${process.env.PORT || 3000}`
+    : `https://${process.env.APP_URL || 'fit-dash.fly.dev'}`;
+}
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get('authorization');
@@ -13,15 +18,15 @@ export async function GET(request: Request) {
   }
 
   try {
-    const redis = getRedis();
+    // Read through the notion route's own cache (memory → disk), not Redis
+    // directly — Redis is no longer the source of truth for workouts.
     let workouts: Workout[] = [];
-
-    if (redis) {
-      const cached = await redis.get('fitdash:workouts');
-      if (cached) {
-        const data = typeof cached === 'string' ? JSON.parse(cached) : cached;
-        workouts = Array.isArray(data) ? data : [];
-      }
+    try {
+      const res = await fetch(`${baseUrl()}/api/notion`);
+      const json = await res.json();
+      if (json.success) workouts = json.workouts || [];
+    } catch (err) {
+      console.error('exercise-reminder workouts fetch failed:', err);
     }
 
     if (workouts.length === 0) {

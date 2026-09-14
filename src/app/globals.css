@@ -2,7 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;700&family=Space+Mono:wght@400;700&display=swap');
+/* Fonts are loaded via next/font/google in src/app/layout.tsx (self-hosted,
+   non-render-blocking) — they expose --font-grotesk / --font-mono on <html>. */
 
 /* Light mode (default) */
 :root {
@@ -54,7 +55,7 @@
 body {
   color: var(--n-text-primary);
   background: var(--n-black);
-  font-family: 'Space Grotesk', system-ui, sans-serif;
+  font-family: var(--font-grotesk), 'Space Grotesk', system-ui, sans-serif;
   font-weight: 400;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -79,13 +80,13 @@ h1, h2, h3, h4, h5, h6 {
 /* Recharts overrides */
 .recharts-text {
   fill: var(--n-text-secondary) !important;
-  font-family: 'Space Mono', monospace !important;
+  font-family: var(--font-mono), 'Space Mono', monospace !important;
   font-size: 10px !important;
 }
 
 .recharts-legend-item-text {
   color: var(--n-text-secondary) !important;
-  font-family: 'Space Mono', monospace !important;
+  font-family: var(--font-mono), 'Space Mono', monospace !important;
   font-size: 11px !important;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -103,12 +104,12 @@ h1, h2, h3, h4, h5, h6 {
 
 .recharts-tooltip-label {
   color: var(--n-text-display) !important;
-  font-family: 'Space Mono', monospace !important;
+  font-family: var(--font-mono), 'Space Mono', monospace !important;
 }
 
 .recharts-tooltip-item {
   color: var(--n-text-primary) !important;
-  font-family: 'Space Mono', monospace !important;
+  font-family: var(--font-mono), 'Space Mono', monospace !important;
 }
 
 /* Select/dropdown styling */

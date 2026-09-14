@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { getRedis } from '@/lib/redis';
+import { setCached } from '@/lib/cache/store';
+import { ADVICE_KEY } from '@/lib/cache/advice-key';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -11,16 +12,18 @@ export async function GET(request: Request) {
   }
 
   try {
-    // Hit the notion API to populate Redis + CDN cache
-    const baseUrl = `https://${process.env.APP_URL || 'fitdash.viraat.dev'}`;
+    // Hit the notion API over localhost to trigger (or join) its normal
+    // single-flight, throttled, incremental background refresh — never a
+    // forced full re-crawl, and never over the public internet.
+    const baseUrl = process.env.HOSTNAME === '0.0.0.0'
+      ? `http://localhost:${process.env.PORT || 3000}`
+      : `https://${process.env.APP_URL || 'fitdash.viraat.dev'}`;
 
-    const response = await fetch(`${baseUrl}/api/notion?refresh=1`);
+    const response = await fetch(`${baseUrl}/api/notion`);
     const data = await response.json();
 
     // Pre-generate exercise advice
     if (data.success && data.workouts?.length > 0) {
-      const redis = getRedis();
-
       try {
         const adviceRes = await fetch(`${baseUrl}/api/insights`, {
           method: 'POST',
@@ -29,9 +32,7 @@ export async function GET(request: Request) {
         });
         if (adviceRes.ok) {
           const advice = await adviceRes.json();
-          if (redis) {
-            await redis.set('fitdash:advice', JSON.stringify(advice), { ex: 86400 });
-          }
+          await setCached(ADVICE_KEY, advice);
           console.log('Exercise advice cached');
         }
       } catch (e) {

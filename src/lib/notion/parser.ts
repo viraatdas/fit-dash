@@ -2,9 +2,27 @@ import { v4 as uuidv4 } from 'uuid';
 import { Workout, Exercise, ExerciseSet } from '@/types';
 import { extractDateFromLine } from './date-parser';
 import { normalizeExercise } from '../exercise/normalizer';
-import { shouldAddBarWeight, usesBarbell, BAR_WEIGHT } from '../exercise/barbell';
+import { shouldAddBarWeight, isFormatDependentBarWeight, BAR_WEIGHT } from '../exercise/barbell';
 import { parseWithLLM, needsLLMParsing } from './llm-parser';
 import { normalizeExerciseBatch, NormalizedExerciseResult } from '../exercise/llm-normalizer';
+
+/**
+ * Bump whenever parsing output changes so cached workouts are rebuilt.
+ *
+ * v2: fixed e1RM/bar-weight/grouping root causes behind implausible early strength
+ * numbers — see src/lib/exercise/strength.ts and the "Chest Press" note in barbell.ts.
+ * Also fixes silently-dropped bodyweight "1x8" (set-number x reps, no weight) sets, and
+ * stops hardcoding "this exercise used per-side plate format" for every LLM-routed
+ * exercise regardless of why it was routed there.
+ *
+ * v3: fixes a v2 regression — a real (prod) LLM set-parse response for per-side "Nx2"
+ * notation is PLATES ONLY (per its own prompt: "45x2" = 90 lbs of plates), same as the
+ * deterministic regex path; only the "a + b + c" bar-inclusive notation returns a complete
+ * total already. v2 skipped bar weight for every LLM-sourced result, silently dropping 45lb
+ * from every real per-side LLM parse. Also tolerates the "Ix5"/"lx5" (capital I / lowercase
+ * l typo'd as the leading "1") notation so that case no longer needs the LLM at all.
+ */
+export const PARSER_VERSION = 3;
 
 interface RichText {
   plain_text: string;
@@ -74,25 +92,29 @@ interface ParsedSet extends ExerciseSet {
  * Format: {set_number}x{reps} - {weight} or {weight}x{multiplier}
  */
 function parseSetString(setStr: string): ParsedSet | null {
-  const cleaned = setStr.trim();
+  // Tolerate a common typo: a leading capital "I" or lowercase "l" standing in for "1"
+  // right before the "x" (e.g. "Ix5 - 70x2" / "lx5 - 70x2" -> "1x5 - 70x2"). Only the very
+  // first character is ever substituted, and only when it's immediately followed by the
+  // set-number's "x" — this never touches a genuine digit elsewhere in the line.
+  const cleaned = setStr.trim().replace(/^[Il](?=\s*x\s*\d)/, '1');
 
   // Pattern: "1x10 - 85x2" or "1x5 - 35x2" (weight with multiplier for per-side notation)
-  const matchWithMultiplier = cleaned.match(/^\d+\s*x\s*(\d+)\s*[-–—]\s*(\d+(?:\.\d+)?)\s*x\s*(\d+)/i);
+  const matchWithMultiplier = cleaned.match(/^\d+\s*x\s*(\d+(?:\.\d+)?)\s*[-–—]\s*(\d+(?:\.\d+)?)\s*x\s*(\d+)/i);
   if (matchWithMultiplier) {
     const weightPerSide = parseFloat(matchWithMultiplier[2]);
     const multiplier = parseInt(matchWithMultiplier[3]);
     return {
-      reps: parseInt(matchWithMultiplier[1]),
+      reps: Math.round(parseFloat(matchWithMultiplier[1])),
       weight: weightPerSide * multiplier,
       isPlatePerSide: true,
     };
   }
 
   // Pattern: "1x10 - 85" or "2x10 - 100" or "1x10- 85" or "1x10 -85"
-  const match = cleaned.match(/^\d+\s*x\s*(\d+)\s*[-–—]\s*(\d+(?:\.\d+)?)/i);
+  const match = cleaned.match(/^\d+\s*x\s*(\d+(?:\.\d+)?)\s*[-–—]\s*(\d+(?:\.\d+)?)/i);
   if (match) {
     return {
-      reps: parseInt(match[1]),
+      reps: Math.round(parseFloat(match[1])),
       weight: parseFloat(match[2]),
       isPlatePerSide: false,
     };
@@ -104,6 +126,18 @@ function parseSetString(setStr: string): ParsedSet | null {
     return {
       reps: parseInt(atMatch[1]),
       weight: parseFloat(atMatch[2]),
+      isPlatePerSide: false,
+    };
+  }
+
+  // Pattern: "1x8" or "2x5" (set-number x reps, NO weight suffix — bodyweight set, e.g.
+  // pull-ups). Must come after the dash/@ patterns above (which all require a weight) so
+  // it only matches when there genuinely is no weight component.
+  const bodyweightSet = cleaned.match(/^\d+\s*x\s*(\d+(?:\.\d+)?)\s*$/i);
+  if (bodyweightSet) {
+    return {
+      reps: Math.round(parseFloat(bodyweightSet[1])),
+      weight: 0,
       isPlatePerSide: false,
     };
   }
@@ -147,17 +181,50 @@ function parseSetsFromChildren(children: NotionBlock[]): ParsedSetsResult {
   return { sets, hasPlatePerSide };
 }
 
+interface SetParseResult {
+  sets: ExerciseSet[];
+  // Where `sets` came from. Matters for bar-weight: per the LLM's own prompt, "Nx2" per-side
+  // notation returns PLATES ONLY (same as the deterministic regex path — "45x2" = 90 lbs of
+  // plate), so it still needs bar weight added; only the "a + b + c" bar-inclusive notation
+  // ("45 + 45 + 45" = bar + plates = 135 total) comes back as a complete total already.
+  source: 'simple' | 'llm';
+  // Whether the session's sets were genuinely written in per-side "Nx2" plate notation —
+  // detected from the actual text, never assumed true just because this exercise happened
+  // to be routed through the LLM path (it may have been routed here for an unrelated reason,
+  // e.g. a typo'd line elsewhere in the same set list).
+  hasPlatePerSideFormat: boolean;
+  // Whether any line used the "a + b + c" (3+ numeric parts) bar-inclusive notation. Only
+  // relevant when source === 'llm' — that's the one notation the LLM prompt tells it to
+  // return as an already-complete total, so bar weight must NOT be added on top of it.
+  hasBarInclusiveNotation: boolean;
+}
+
+/** Heuristic for lines the deterministic parser couldn't handle at all: does the tail of
+ *  the line look like the per-side plate notation ("... - 45x2") used elsewhere in the log? */
+function looksLikePlatePerSide(text: string): boolean {
+  return /[-–—]\s*\d+(?:\.\d+)?\s*x\s*\d+\s*$/i.test(text.trim());
+}
+
+/** Mirrors the "3+ numeric parts joined by +" check in llm-parser.ts's needsLLMParsing —
+ *  the one notation ("45 + 45 + 45") its prompt defines as bar + plates = complete total. */
+function looksBarInclusive(text: string): boolean {
+  const parts = text.trim().toLowerCase().split(/\s*\+\s*/).filter(p => /\d/.test(p));
+  return parts.length >= 3;
+}
+
 /**
  * Parse exercise children with LLM fallback for complex patterns
  */
 async function parseSetsFromChildrenWithLLM(
   exerciseName: string,
   children: NotionBlock[]
-): Promise<ExerciseSet[]> {
+): Promise<SetParseResult> {
   const rawTexts: string[] = [];
-  const simpleResults: { index: number; set: ExerciseSet }[] = [];
+  const simpleResults: { index: number; set: ParsedSet }[] = [];
 
   let hasComplexEntries = false;
+  let hasPlatePerSideFormat = false;
+  let hasBarInclusiveNotation = false;
 
   // First pass: always try simple parsing, track which need LLM
   for (let i = 0; i < children.length; i++) {
@@ -165,19 +232,27 @@ async function parseSetsFromChildrenWithLLM(
     if (!text) continue;
 
     rawTexts.push(text);
+    if (looksBarInclusive(text)) hasBarInclusiveNotation = true;
 
     // Always try simple parsing first
     const set = parseSetString(text);
     if (set) {
       simpleResults.push({ index: i, set });
-    } else if (needsLLMParsing(text)) {
-      hasComplexEntries = true;
+      if (set.isPlatePerSide) hasPlatePerSideFormat = true;
+    } else {
+      if (looksLikePlatePerSide(text)) hasPlatePerSideFormat = true;
+      if (needsLLMParsing(text)) hasComplexEntries = true;
     }
   }
 
   // If all were parsed simply, return them
   if (simpleResults.length === rawTexts.length) {
-    return simpleResults.map(r => r.set);
+    return {
+      sets: simpleResults.map(r => ({ reps: r.set.reps, weight: r.set.weight })),
+      source: 'simple',
+      hasPlatePerSideFormat,
+      hasBarInclusiveNotation,
+    };
   }
 
   // Only use LLM if there are entries that simple parsing couldn't handle
@@ -186,7 +261,7 @@ async function parseSetsFromChildrenWithLLM(
       const llmResult = await parseWithLLM(exerciseName, rawTexts);
       if (llmResult.sets.length > 0) {
         console.log(`LLM parsed "${exerciseName}": ${llmResult.interpretation}`);
-        return llmResult.sets;
+        return { sets: llmResult.sets, source: 'llm', hasPlatePerSideFormat, hasBarInclusiveNotation };
       }
     } catch (error) {
       console.error('LLM parsing failed, using simple parser:', error);
@@ -194,7 +269,12 @@ async function parseSetsFromChildrenWithLLM(
   }
 
   // Fallback to simple results
-  return simpleResults.map(r => r.set);
+  return {
+    sets: simpleResults.map(r => ({ reps: r.set.reps, weight: r.set.weight })),
+    source: 'simple',
+    hasPlatePerSideFormat,
+    hasBarInclusiveNotation,
+  };
 }
 
 /**
@@ -279,9 +359,6 @@ export async function parseNotionPage(blocks: NotionBlock[]): Promise<Workout[]>
 
         const normalizedName = llmResult?.name || fallbackNorm.name;
         const category = llmResult?.category || fallbackNorm.category;
-        const isBarbell = llmResult
-          ? llmResult.usesBarbell
-          : usesBarbell(fallbackNorm.name, exerciseName);
 
         // Check if children need LLM set parsing
         let needsLLM = false;
@@ -313,9 +390,10 @@ export async function parseNotionPage(blocks: NotionBlock[]): Promise<Workout[]>
           }
         }
 
-        // Add bar weight — uses format detection for recently-switched exercises
+        // Add bar weight — uses format detection for format-dependent exercises (e.g. an
+        // exercise logged under the same name for both a machine and a loaded barbell).
         const addBar = llmResult
-          ? (llmResult.usesBarbell && (hasPlatePerSide || !['Calf Raise', 'Standing Calf Raise'].includes(normalizedName)))
+          ? (llmResult.usesBarbell && (hasPlatePerSide || !isFormatDependentBarWeight(normalizedName)))
           : shouldAddBarWeight(normalizedName, exerciseName, hasPlatePerSide);
 
         if (addBar) {
@@ -348,17 +426,35 @@ export async function parseNotionPage(blocks: NotionBlock[]): Promise<Workout[]>
     for (let i = 0; i < exercisesToParse.length; i += batchSize) {
       const batch = exercisesToParse.slice(i, i + batchSize);
       const promises = batch.map(async (item) => {
-        let sets = await parseSetsFromChildrenWithLLM(item.name, item.children);
+        const { sets: parsedSets, source, hasPlatePerSideFormat, hasBarInclusiveNotation } =
+          await parseSetsFromChildrenWithLLM(item.name, item.children);
+        let sets = parsedSets;
 
-        // LLM-parsed exercises came from needsLLMParsing (x2 format), so hasPlatePerSide=true
+        // Use the normalizedName Pass 2 already resolved for this exact exercise instance
+        // (LLM name-normalization result if available, otherwise the keyword fallback) —
+        // don't recompute it separately, which could drift from what was actually stored.
+        const normalizedName = item.workout.exercises[item.exerciseIndex].normalizedName;
         const llmResult = llmNormMap.get(item.name);
-        const normalized = normalizeExercise(item.name);
-        const addBar = llmResult
-          ? llmResult.usesBarbell
-          : shouldAddBarWeight(normalized.name, item.name, true);
 
-        if (addBar) {
-          sets = sets.map(s => ({ ...s, weight: s.weight > 0 ? s.weight + BAR_WEIGHT : 0 }));
+        // Bar weight: skip ONLY when the returned sets are a genuine LLM response AND the
+        // session used the "a + b + c" bar-inclusive notation — that's the one case the LLM
+        // prompt defines as already returning a complete total ("45 + 45 + 45" = bar +
+        // plates = 135). Per-side "Nx2" notation (the overwhelmingly common case here) comes
+        // back PLATES ONLY from the LLM too ("45x2" = 90 lbs of plate), same as the
+        // deterministic regex path, so it still needs bar weight added. (Gating on `source`
+        // too, not just the text pattern, matters for the rare case where a bar-inclusive
+        // line fails to parse AND the LLM call itself fails — the fallback `sets` then come
+        // from ordinary per-side lines elsewhere in the same session, which still need the
+        // usual bar logic even though `hasBarInclusiveNotation` is true for the session.)
+        const skipBarWeight = source === 'llm' && hasBarInclusiveNotation;
+        if (!skipBarWeight) {
+          const addBar = llmResult
+            ? llmResult.usesBarbell && (hasPlatePerSideFormat || !isFormatDependentBarWeight(normalizedName))
+            : shouldAddBarWeight(normalizedName, item.name, hasPlatePerSideFormat);
+
+          if (addBar) {
+            sets = sets.map(s => ({ ...s, weight: s.weight > 0 ? s.weight + BAR_WEIGHT : 0 }));
+          }
         }
         item.workout.exercises[item.exerciseIndex].sets = sets;
       });

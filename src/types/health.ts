@@ -16,7 +16,6 @@ export interface DailyHealth {
   activeCalories?: number;
   restingHeartRate?: number;
   heartRateVariability?: number;
-  sleepHours?: number;
   weight?: number;
   walkingDistance?: number; // in miles
   flightsClimbed?: number;

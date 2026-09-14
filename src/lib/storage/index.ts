@@ -5,4 +5,6 @@ export {
   updateInBodyEntry,
   deleteInBodyEntry,
   getLatestInBodyEntry,
+  getLatestWeightEntry,
+  getDefaultDexaEntry,
 } from './inbody';

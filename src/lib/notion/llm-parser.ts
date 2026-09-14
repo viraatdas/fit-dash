@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateText, extractJson, isLLMConfigured } from '@/lib/llm';
 import { ExerciseSet } from '@/types';
 
 interface ParsedSetResult {
@@ -10,11 +10,7 @@ export async function parseWithLLM(
   exerciseName: string,
   rawSets: string[]
 ): Promise<ParsedSetResult> {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return { sets: [], interpretation: 'No API key' };
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+  if (!isLLMConfigured()) return { sets: [], interpretation: 'No API key' };
 
   const prompt = `Parse these workout sets for "${exerciseName}". Return ONLY valid JSON (no markdown, no code fences).
 
@@ -36,12 +32,10 @@ Return JSON:
 }`;
 
   try {
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+    const text = await generateText(prompt, { jsonObject: true });
 
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = extractJson<{ sets?: ExerciseSet[]; interpretation?: string }>(text, 'object');
+    if (parsed) {
       return {
         sets: parsed.sets || [],
         interpretation: parsed.interpretation || '',

@@ -1,5 +1,20 @@
 import type { Metadata } from 'next'
+import { Space_Grotesk, Space_Mono } from 'next/font/google'
 import './globals.css'
+
+const spaceGrotesk = Space_Grotesk({
+  subsets: ['latin'],
+  weight: ['300', '400', '500', '700'],
+  variable: '--font-grotesk',
+  display: 'swap',
+})
+
+const spaceMono = Space_Mono({
+  subsets: ['latin'],
+  weight: ['400', '700'],
+  variable: '--font-mono',
+  display: 'swap',
+})
 
 export const metadata: Metadata = {
   metadataBase: new URL('https://fitdash.viraat.dev'),
@@ -31,7 +46,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className={`dark ${spaceGrotesk.variable} ${spaceMono.variable}`}>
       <head>
         <script dangerouslySetInnerHTML={{
           __html: `

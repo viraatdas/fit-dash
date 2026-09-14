@@ -28,8 +28,8 @@ const config: Config = {
         },
       },
       fontFamily: {
-        grotesk: ['"Space Grotesk"', 'system-ui', 'sans-serif'],
-        mono: ['"Space Mono"', '"JetBrains Mono"', 'monospace'],
+        grotesk: ['var(--font-grotesk)', '"Space Grotesk"', 'system-ui', 'sans-serif'],
+        mono: ['var(--font-mono)', '"Space Mono"', '"JetBrains Mono"', 'monospace'],
       },
       borderRadius: {
         'nothing': '12px',

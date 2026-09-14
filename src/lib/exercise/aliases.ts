@@ -94,6 +94,9 @@ const EXERCISE_ALIASES: Record<string, string> = {
   'back squat': 'Back Squat',
   'front squat': 'Front Squat',
   'goblet squat': 'Goblet Squat',
+  'hack squat': 'Hack Squat',
+  'smith squat': 'Smith Machine Squat',
+  'smith machine squat': 'Smith Machine Squat',
   'leg press': 'Leg Press',
   'lunge': 'Lunges',
   'lunges': 'Lunges',
@@ -134,16 +137,24 @@ const EXERCISE_ALIASES: Record<string, string> = {
   'cable crunch': 'Cable Crunch',
 };
 
-export function getCanonicalName(exerciseName: string): string {
-  const lowerName = exerciseName.toLowerCase().trim();
+// Substring matches must prefer the MOST SPECIFIC alias, not the first one declared.
+// (Object.entries() iterates in insertion order, and several short/generic keys like
+// 'squat', 'row', 'bench' are declared early — without sorting, they'd shadow every
+// longer, more specific alias that also happens to contain them as a substring, e.g.
+// "hack squat" or "dumbbell bench press" would incorrectly resolve to the generic
+// 'squat'/'bench' alias instead of their own more specific entry.)
+const SORTED_ALIASES: [string, string][] = Object.entries(EXERCISE_ALIASES).sort(
+  (a, b) => b[0].length - a[0].length
+);
 
+function resolveBaseCanonicalName(lowerName: string, exerciseName: string): string {
   // Check exact match first
   if (EXERCISE_ALIASES[lowerName]) {
     return EXERCISE_ALIASES[lowerName];
   }
 
-  // Check if any alias is contained in the name
-  for (const [alias, canonical] of Object.entries(EXERCISE_ALIASES)) {
+  // Check if any alias is contained in the name — longest (most specific) match wins.
+  for (const [alias, canonical] of SORTED_ALIASES) {
     if (lowerName.includes(alias)) {
       return canonical;
     }
@@ -154,4 +165,27 @@ export function getCanonicalName(exerciseName: string): string {
     .split(' ')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join(' ');
+}
+
+// The alias table only spells out "Dumbbell X" for a handful of movements (bench, curl,
+// row, shrug, shoulder press). Data shows the same gap for many others — "Dumbbell squats",
+// "Squats with dumbbells", "Dumbbell lunge", "Dumbbell lateral raise", "Dumbell calf
+// raises", etc. all resolve to the bare movement name (Squat, Lunges, Lateral Raise, Calf
+// Raise) via the generic substring match above, silently dropping the equipment. That's not
+// just cosmetic: every downstream consumer that groups history by normalizedName (weight
+// charts, PR checks, targets) ends up comparing dumbbell numbers against barbell/machine
+// numbers for the "same" exercise. Rather than hand-enumerating every movement, detect the
+// dumbbell qualifier generically and prepend it whenever the resolved name doesn't already
+// carry it.
+const DUMBBELL_KEYWORDS = ['dumbbell', 'dumbell', 'db '];
+
+export function getCanonicalName(exerciseName: string): string {
+  const lowerName = exerciseName.toLowerCase().trim();
+  const base = resolveBaseCanonicalName(lowerName, exerciseName);
+
+  if (!base.toLowerCase().includes('dumbbell') && DUMBBELL_KEYWORDS.some(kw => lowerName.includes(kw))) {
+    return `Dumbbell ${base}`;
+  }
+
+  return base;
 }

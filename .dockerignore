@@ -4,6 +4,7 @@ node_modules
 .gitignore
 *.md
 .env*
+.mcp-api-key
 .fly
 fly.toml
 Dockerfile

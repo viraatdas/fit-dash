@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { getRedis } from '@/lib/redis';
 import { Workout } from '@/types';
 import { format } from 'date-fns';
+import { filterOutliers } from '@/lib/exercise/strength';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -57,19 +58,32 @@ export async function GET(request: Request) {
       return NextResponse.json({ message: 'No new workouts', lastSeen: lastSeen.toISOString() });
     }
 
-    // Build all-time max per exercise from workouts BEFORE the new ones
+    // Build a robust (outlier-guarded) all-time max per exercise from workouts BEFORE the
+    // new ones. A single mis-parsed or equipment-mismatched historical session used to be
+    // able to set a permanently-wrong "old max" baseline (or, worse, get treated as a PR
+    // itself the day it was logged) — filter each exercise's own history before reducing
+    // it to a max, not just take the raw max at face value.
     const historicalWorkouts = sorted.filter(w => new Date(w.date) <= lastSeen);
-    const historicalMax: Record<string, number> = {};
+    const historicalSeries: Record<string, Array<{ date: Date; weight: number }>> = {};
     for (const w of historicalWorkouts) {
       for (const e of w.exercises) {
         const topWeight = Math.max(0, ...e.sets.map(s => s.weight));
-        if (topWeight > (historicalMax[e.normalizedName] || 0)) {
-          historicalMax[e.normalizedName] = topWeight;
-        }
+        if (topWeight <= 0) continue;
+        (historicalSeries[e.normalizedName] ||= []).push({ date: new Date(w.date), weight: topWeight });
       }
     }
+    for (const series of Object.values(historicalSeries)) {
+      series.sort((a, b) => a.date.getTime() - b.date.getTime());
+    }
+    const historicalMax: Record<string, number> = {};
+    for (const [name, series] of Object.entries(historicalSeries)) {
+      const clean = filterOutliers(series, p => p.weight);
+      historicalMax[name] = Math.max(0, ...clean.map(p => p.weight));
+    }
 
-    // Detect PRs in the new workouts
+    // Detect PRs in the new workouts — but don't fire a notification for a "PR" that's an
+    // implausible jump vs. this exercise's own recent (outlier-guarded) trend, so a
+    // parsing/notation edge case can't page the user about a lift they didn't actually hit.
     const prs: Array<{ exercise: string; date: Date; newMax: number; oldMax: number; delta: number; reps: number }> = [];
     for (const w of newWorkouts) {
       for (const e of w.exercises) {
@@ -77,16 +91,21 @@ export async function GET(request: Request) {
         if (validSets.length === 0) continue;
         const topSet = validSets.reduce((best, s) => (s.weight > best.weight ? s : best), validSets[0]);
         const old = historicalMax[e.normalizedName] || 0;
-        if (old > 0 && topSet.weight > old) {
-          prs.push({
-            exercise: e.normalizedName,
-            date: new Date(w.date),
-            newMax: topSet.weight,
-            oldMax: old,
-            delta: topSet.weight - old,
-            reps: topSet.reps,
-          });
-        }
+        if (old <= 0 || topSet.weight <= old) continue;
+
+        const recentSeries = historicalSeries[e.normalizedName] || [];
+        const candidatePoint = { date: new Date(w.date), weight: topSet.weight };
+        const withCandidate = filterOutliers([...recentSeries, candidatePoint], p => p.weight);
+        if (!withCandidate.includes(candidatePoint)) continue;
+
+        prs.push({
+          exercise: e.normalizedName,
+          date: new Date(w.date),
+          newMax: topSet.weight,
+          oldMax: old,
+          delta: topSet.weight - old,
+          reps: topSet.reps,
+        });
       }
     }
 

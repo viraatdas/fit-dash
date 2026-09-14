@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { generateText, extractJson, isLLMConfigured } from '@/lib/llm';
 import { getRedis } from '@/lib/redis';
 import { Workout, FoodDay } from '@/types';
 import { subDays, differenceInDays, format } from 'date-fns';
+import { isCompoundLift } from '@/lib/exercise/strength';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,8 +24,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return NextResponse.json({ error: 'Gemini not configured' }, { status: 500 });
+  if (!isLLMConfigured()) return NextResponse.json({ error: 'LLM not configured' }, { status: 500 });
 
   const redis = getRedis();
 
@@ -52,13 +52,15 @@ export async function GET(request: Request) {
       return d >= twoWeeksAgo && d < weekAgo;
     });
 
-    const compoundKeys = ['squat', 'deadlift', 'bench', 'press', 'row'];
+    // Exact-name compound-lift check (see strength.ts) — a substring check like
+    // `name.includes('press')` also catches "Leg Press" as "press", but more importantly
+    // ropes in whatever else contains that fragment as normalizedNames evolve, so it's
+    // replaced with the same curated identity the strength chart uses.
     const compoundMaxes = (list: Workout[]) => {
       const out: Record<string, number> = {};
       for (const w of list) {
         for (const e of w.exercises) {
-          const name = e.normalizedName.toLowerCase();
-          if (!compoundKeys.some(k => name.includes(k))) continue;
+          if (!isCompoundLift(e.normalizedName)) continue;
           const top = Math.max(0, ...e.sets.map(s => s.weight));
           if (top > (out[e.normalizedName] || 0)) out[e.normalizedName] = top;
         }
@@ -123,13 +125,9 @@ Write a weekly retro in this JSON shape ONLY (no markdown):
   "next_week_focus": "<1-2 sentences: what to prioritize Mon-Sun>"
 }`;
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('No JSON in LLM response');
-    const parsed = JSON.parse(jsonMatch[0]);
+    const text = await generateText(prompt, { jsonObject: true });
+    const parsed = extractJson<{ headline: string; wins?: string[]; losses_or_gaps?: string[]; next_week_focus?: string }>(text, 'object');
+    if (!parsed) throw new Error('No JSON in LLM response');
 
     const payload = {
       ...parsed,

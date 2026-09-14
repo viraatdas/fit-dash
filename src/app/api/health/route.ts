@@ -1,37 +1,17 @@
 import { NextResponse } from 'next/server';
 import { DailyHealth, HealthAutoExportPayload } from '@/types';
-import { getRedis } from '@/lib/redis';
-
-const REDIS_KEY = 'health-data';
+import { getHealthData, saveHealthData, clearHealthData } from '@/lib/health/data-store';
 
 // Cache for in-memory access
 let healthDataCache: DailyHealth[] | null = null;
 let lastUpdatedCache: string | null = null;
 
 async function loadFromStore(): Promise<{ data: DailyHealth[]; lastUpdated: string | null }> {
-  const redis = getRedis();
-  if (redis) {
-    try {
-      const stored = await redis.get<{ data: DailyHealth[]; lastUpdated: string }>(REDIS_KEY);
-      if (stored) {
-        return { data: stored.data || [], lastUpdated: stored.lastUpdated || null };
-      }
-    } catch (err) {
-      console.error('Failed to load from Redis:', err);
-    }
-  }
-  return { data: [], lastUpdated: null };
+  return getHealthData();
 }
 
 async function saveToStore(data: DailyHealth[], lastUpdated: string): Promise<void> {
-  const redis = getRedis();
-  if (redis) {
-    try {
-      await redis.set(REDIS_KEY, { data, lastUpdated });
-    } catch (err) {
-      console.error('Failed to save to Redis:', err);
-    }
-  }
+  await saveHealthData(data, lastUpdated);
 }
 
 const WEBHOOK_SECRET = process.env.HEALTH_WEBHOOK_SECRET;
@@ -45,8 +25,6 @@ const METRIC_MAPPINGS: Record<string, keyof DailyHealth> = {
   'resting_heart_rate': 'restingHeartRate',
   'heart_rate_variability_sdnn': 'heartRateVariability',
   'hrv': 'heartRateVariability',
-  'sleep_analysis': 'sleepHours',
-  'sleep': 'sleepHours',
   'weight': 'weight',
   'body_mass': 'weight',
   'walking_running_distance': 'walkingDistance',
@@ -229,8 +207,6 @@ function processMetricsFormat(payload: HealthAutoExportPayload): DailyHealth[] {
       // Convert units
       if (metricKey === 'walkingDistance') {
         value = value * 0.000621371; // meters to miles
-      } else if (metricKey === 'sleepHours') {
-        value = value / 60; // minutes to hours
       }
 
       const currentValue = (daily as unknown as Record<string, number>)[metricKey] || 0;
@@ -279,22 +255,15 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const redis = getRedis();
-  if (redis) {
-    try {
-      await redis.del(REDIS_KEY);
-      healthDataCache = [];
-      lastUpdatedCache = null;
-      return NextResponse.json({ success: true, message: 'Health data cleared' });
-    } catch (err) {
-      console.error('Failed to clear Redis:', err);
-      return NextResponse.json({ error: 'Failed to clear data' }, { status: 500 });
-    }
+  try {
+    await clearHealthData();
+    healthDataCache = [];
+    lastUpdatedCache = null;
+    return NextResponse.json({ success: true, message: 'Health data cleared' });
+  } catch (err) {
+    console.error('Failed to clear health data store:', err);
+    return NextResponse.json({ error: 'Failed to clear data' }, { status: 500 });
   }
-
-  healthDataCache = [];
-  lastUpdatedCache = null;
-  return NextResponse.json({ success: true, message: 'Health data cleared (in-memory only)' });
 }
 
 // GET - Retrieve stored health data (add ?debug=1 to see last payload format)

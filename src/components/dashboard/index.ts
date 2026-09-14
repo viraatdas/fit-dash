@@ -1,4 +1,6 @@
-export { StatsOverview } from './StatsOverview';
+export { RecoveryHero } from './RecoveryHero';
+export { WeekStrip } from './WeekStrip';
+export { SettingsMenu } from './SettingsMenu';
 export { WorkoutSummary } from './WorkoutSummary';
 export { CategoryFilter } from './CategoryFilter';
 export { Insights } from './Insights';

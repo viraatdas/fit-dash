@@ -1,19 +1,14 @@
 import { NextResponse } from 'next/server';
-import { getRedis } from '@/lib/redis';
+import { getCached } from '@/lib/cache/store';
+import { ADVICE_KEY } from '@/lib/cache/advice-key';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const redis = getRedis();
-  if (!redis) {
-    return NextResponse.json({ error: 'Redis not configured' }, { status: 500 });
-  }
-
   try {
-    const cached = await redis.get('fitdash:advice');
+    const cached = await getCached<unknown>(ADVICE_KEY);
     if (cached) {
-      const data = typeof cached === 'string' ? JSON.parse(cached) : cached;
-      const response = NextResponse.json(data);
+      const response = NextResponse.json(cached);
       response.headers.set('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
       return response;
     }

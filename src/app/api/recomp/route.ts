@@ -1,25 +1,26 @@
 import { NextResponse } from 'next/server';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { getRedis } from '@/lib/redis';
+import { generateText, extractJson, isLLMConfigured } from '@/lib/llm';
+import { getCached, setCached } from '@/lib/cache/store';
 import crypto from 'node:crypto';
 
 export const maxDuration = 60;
 
-const REDIS_PREFIX = 'fitdash:recomp:';
-const REDIS_TTL = 86400;
+const CACHE_PREFIX = 'fitdash:recomp:';
 const MEMORY_TTL = 6 * 60 * 60 * 1000;
 
 interface InBodyEntryIn {
   date: string;
-  weight: number;
+  weight?: number;
   bodyFatPercentage: number;
-  muscleMass: number;
+  muscleMass?: number;
   bodyFatMass?: number;
   bmi?: number;
   visceralFat?: number;
   visceralFatArea?: number;
   trunkFatMass?: number;
   basalMetabolicRate?: number;
+  source?: 'inbody' | 'dexa';
+  dateUnknown?: boolean;
 }
 
 interface WorkoutSet { reps: number; weight: number }
@@ -130,8 +131,27 @@ function summarizeFood(days: FoodDay[]) {
 function summarizeInBody(entries: InBodyEntryIn[]) {
   const sorted = [...entries].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   if (sorted.length === 0) return null;
-  const latest = sorted[sorted.length - 1];
-  const prior = sorted[sorted.length - 2] || null;
+
+  // The single most recent body-fat reading, regardless of method — this is the
+  // "current" absolute BF% (may be a DEXA reading with no weight/muscle data).
+  const mostRecent = sorted[sorted.length - 1];
+  const currentBodyFat = {
+    value: mostRecent.bodyFatPercentage,
+    source: (mostRecent.source ?? 'inbody') as 'inbody' | 'dexa',
+    date: mostRecent.date,
+    dateUnknown: !!mostRecent.dateUnknown,
+  };
+
+  // Composition detail (weight, muscle, trunk/visceral fat, BMR) and all trend
+  // deltas come from InBody's bioimpedance scans only — DEXA only measures BF%,
+  // and a delta must never be computed across two different measurement methods.
+  const inBodyOnly = sorted.filter(e => (e.source ?? 'inbody') === 'inbody');
+  if (inBodyOnly.length === 0) {
+    return { latest: null, prior: null, daysBetween: null, deltas: null, currentBodyFat };
+  }
+
+  const latest = inBodyOnly[inBodyOnly.length - 1];
+  const prior = inBodyOnly[inBodyOnly.length - 2] || null;
   const daysBetween = prior
     ? Math.round((new Date(latest.date).getTime() - new Date(prior.date).getTime()) / 86400000)
     : null;
@@ -141,8 +161,8 @@ function summarizeInBody(entries: InBodyEntryIn[]) {
     daysBetween,
     deltas: prior
       ? {
-          weight: +(latest.weight - prior.weight).toFixed(1),
-          muscleMass: +(latest.muscleMass - prior.muscleMass).toFixed(1),
+          weight: +((latest.weight as number) - (prior.weight as number)).toFixed(1),
+          muscleMass: +((latest.muscleMass as number) - (prior.muscleMass as number)).toFixed(1),
           bodyFatPercentage: +(latest.bodyFatPercentage - prior.bodyFatPercentage).toFixed(1),
           bodyFatMass: latest.bodyFatMass != null && prior.bodyFatMass != null
             ? +(latest.bodyFatMass - prior.bodyFatMass).toFixed(1)
@@ -158,12 +178,12 @@ function summarizeInBody(entries: InBodyEntryIn[]) {
             : null,
         }
       : null,
+    currentBodyFat,
   };
 }
 
 export async function POST(request: Request) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return NextResponse.json({ error: 'Gemini not configured' }, { status: 500 });
+  if (!isLLMConfigured()) return NextResponse.json({ error: 'LLM not configured' }, { status: 500 });
 
   const body = await request.json();
   const inBodyEntries: InBodyEntryIn[] = body.inBodyEntries || [];
@@ -173,8 +193,14 @@ export async function POST(request: Request) {
   if (!inBodySummary) return NextResponse.json({ error: 'No InBody data provided' }, { status: 400 });
 
   // cache key includes a PROMPT_VERSION so prompt changes invalidate cached verdicts
-  const PROMPT_VERSION = 'v2-pace-take';
-  const cacheKey = REDIS_PREFIX + hashInputs({ v: PROMPT_VERSION, goal, latestDate: inBodySummary.latest.date, entryCount: inBodyEntries.length });
+  const PROMPT_VERSION = 'v3-dexa-aware';
+  const cacheKey = CACHE_PREFIX + hashInputs({
+    v: PROMPT_VERSION,
+    goal,
+    latestDate: inBodySummary.currentBodyFat.date,
+    latestSource: inBodySummary.currentBodyFat.source,
+    entryCount: inBodyEntries.length,
+  });
 
   // Memory
   const mem = memoryCache.get(cacheKey);
@@ -182,19 +208,15 @@ export async function POST(request: Request) {
     return NextResponse.json(mem.data);
   }
 
-  // Redis
-  const redis = getRedis();
-  if (redis) {
-    try {
-      const cached = await redis.get(cacheKey);
-      if (cached) {
-        const data = typeof cached === 'string' ? JSON.parse(cached) : cached;
-        memoryCache.set(cacheKey, { data, ts: Date.now() });
-        return NextResponse.json(data);
-      }
-    } catch (err) {
-      console.error('Redis read (recomp) failed:', err);
+  // Durable cache (file store)
+  try {
+    const cached = await getCached<unknown>(cacheKey);
+    if (cached) {
+      memoryCache.set(cacheKey, { data: cached, ts: Date.now() });
+      return NextResponse.json(cached);
     }
+  } catch (err) {
+    console.error('Cache read (recomp) failed:', err);
   }
 
   // Gather context
@@ -215,12 +237,22 @@ export async function POST(request: Request) {
   const workoutSummary = summarizeWorkouts(workouts);
   const foodSummary = summarizeFood(foodDays);
 
+  const cb = inBodySummary.currentBodyFat;
+  const currentBodyFatSection = cb.source === 'dexa'
+    ? `CURRENT BODY FAT (most recent reading, any method): ${cb.value}% via DEXA scan (${cb.dateUnknown ? 'exact date unknown' : cb.date}).
+IMPORTANT: DEXA typically reads several percentage points HIGHER than InBody's bioimpedance method for the same person. This is a measurement-method difference, not fat gained — do NOT describe the jump from the InBody BF% below to this DEXA BF% as a trend or as "gaining fat". Use ${cb.value}% as the current/absolute body-fat number (e.g. for gap-to-goal language), but base all rate-of-change / trend language on the InBody-to-InBody numbers below only.`
+    : `CURRENT BODY FAT (most recent reading): ${cb.value}% via InBody scan on ${cb.date} (this is the same scan detailed below).`;
+
+  const referenceWeight = inBodySummary.latest?.weight;
+
   const prompt = `You are a strength & conditioning coach analyzing a 25-year-old male's body recomposition progress.
 
 GOAL (stated by user):
 ${goal}
 
-LATEST INBODY SCAN (${inBodySummary.latest.date}):
+${currentBodyFatSection}
+
+${inBodySummary.latest ? `LATEST INBODY SCAN (${inBodySummary.latest.date}) — composition detail and trend basis (bioimpedance):
 - Weight: ${inBodySummary.latest.weight} lb
 - Body Fat %: ${inBodySummary.latest.bodyFatPercentage}%
 - Body Fat Mass: ${inBodySummary.latest.bodyFatMass ?? 'n/a'} lb
@@ -231,14 +263,14 @@ LATEST INBODY SCAN (${inBodySummary.latest.date}):
 - BMR: ${inBodySummary.latest.basalMetabolicRate ?? 'n/a'} kcal/day
 - BMI: ${inBodySummary.latest.bmi ?? 'n/a'}
 
-${inBodySummary.prior && inBodySummary.deltas ? `TREND vs ${inBodySummary.prior.date} (${inBodySummary.daysBetween} days ago):
+${inBodySummary.prior && inBodySummary.deltas ? `TREND vs ${inBodySummary.prior.date} (${inBodySummary.daysBetween} days ago) — InBody-to-InBody only, never mixed with the DEXA reading above:
 - Weight: ${inBodySummary.deltas.weight >= 0 ? '+' : ''}${inBodySummary.deltas.weight} lb
 - Muscle: ${inBodySummary.deltas.muscleMass >= 0 ? '+' : ''}${inBodySummary.deltas.muscleMass} lb
 - Body Fat %: ${inBodySummary.deltas.bodyFatPercentage >= 0 ? '+' : ''}${inBodySummary.deltas.bodyFatPercentage}%
 - Body Fat Mass: ${inBodySummary.deltas.bodyFatMass != null ? (inBodySummary.deltas.bodyFatMass >= 0 ? '+' : '') + inBodySummary.deltas.bodyFatMass + ' lb' : 'n/a'}
 - Trunk Fat Mass: ${inBodySummary.deltas.trunkFatMass != null ? (inBodySummary.deltas.trunkFatMass >= 0 ? '+' : '') + inBodySummary.deltas.trunkFatMass + ' lb' : 'n/a'}
 - Visceral Fat Area: ${inBodySummary.deltas.visceralFatArea != null ? (inBodySummary.deltas.visceralFatArea >= 0 ? '+' : '') + inBodySummary.deltas.visceralFatArea + ' cm²' : 'n/a'}
-- Visceral Fat Level: ${inBodySummary.deltas.visceralFat != null ? (inBodySummary.deltas.visceralFat >= 0 ? '+' : '') + inBodySummary.deltas.visceralFat : 'n/a'}` : 'No prior scan for comparison.'}
+- Visceral Fat Level: ${inBodySummary.deltas.visceralFat != null ? (inBodySummary.deltas.visceralFat >= 0 ? '+' : '') + inBodySummary.deltas.visceralFat : 'n/a'}` : 'No prior InBody scan for trend comparison.'}` : 'No InBody scan on file — only a DEXA body-fat reading exists, so composition detail and trend analysis are unavailable.'}
 
 TRAINING (last ${workoutSummary.sessionCount} sessions):
 - Frequency: ${workoutSummary.avgDaysBetween ? `${workoutSummary.avgDaysBetween} days between sessions` : 'insufficient data'}
@@ -248,11 +280,11 @@ ${workoutSummary.compoundProgress.map(c => `  • ${c.name}: ${c.priorWeight} �
 
 NUTRITION (last ${foodSummary.daysLogged} logged days — note any days unlogged are gaps):
 - Avg calories: ${foodSummary.avgCalories} kcal/day
-- Avg protein: ${foodSummary.avgProtein} g/day (target for recomp ≈ bodyweight × 1g = ${Math.round(inBodySummary.latest.weight)} g/day)
+- Avg protein: ${foodSummary.avgProtein} g/day (target for recomp ≈ bodyweight × 1g${referenceWeight != null ? ` = ${Math.round(referenceWeight)} g/day` : ', but no known bodyweight on file'})
 - Avg carbs/fat/fiber: ${foodSummary.avgCarbs}/${foodSummary.avgFat}/${foodSummary.avgFiber} g/day
 - Logging compliance: ${foodSummary.daysLogged}/7 days
 
-Analyze rate of change and whether the user is on track for their goal. Be honest about what the numbers imply — if logging is thin, call it out. Focus on belly fat loss (visceral) and progressive overload specifically.
+Analyze rate of change and whether the user is on track for their goal. Be honest about what the numbers imply — if logging is thin, call it out. Focus on belly fat loss (visceral) and progressive overload specifically.${cb.source === 'dexa' ? ' Remember: the current BF% is a DEXA reading and is not directly comparable to the InBody trend — never phrase the DEXA-vs-InBody difference as fat gained.' : ''}
 
 Benchmarks to judge pace against:
 - Realistic trained recomp: 0.25-0.5 lb muscle/month, 0.5-1% BF drop/month.
@@ -278,13 +310,9 @@ Return ONLY valid JSON (no markdown):
 }`;
 
   try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) throw new Error('No JSON in LLM response');
-    const insights = JSON.parse(jsonMatch[0]);
+    const text = await generateText(prompt, { jsonObject: true });
+    const insights = extractJson<Record<string, unknown>>(text, 'object');
+    if (!insights) throw new Error('No JSON in LLM response');
 
     const payload = {
       ...insights,
@@ -297,12 +325,10 @@ Return ONLY valid JSON (no markdown):
     };
 
     memoryCache.set(cacheKey, { data: payload, ts: Date.now() });
-    if (redis) {
-      try {
-        await redis.set(cacheKey, JSON.stringify(payload), { ex: REDIS_TTL });
-      } catch (err) {
-        console.error('Redis write (recomp) failed:', err);
-      }
+    try {
+      await setCached(cacheKey, payload);
+    } catch (err) {
+      console.error('Cache write (recomp) failed:', err);
     }
 
     return NextResponse.json(payload);

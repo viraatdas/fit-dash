@@ -26,12 +26,26 @@ ENV HOSTNAME=0.0.0.0
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Copy standalone output
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
+# su-exec drops root privileges in the entrypoint after fixing up the mounted
+# volume's ownership (mounted volumes are root-owned at container start).
+RUN apk add --no-cache su-exec
 
-USER nextjs
+# Copy standalone output and source files used by the MCP code-control tools.
+COPY --chown=nextjs:nodejs --from=builder /app/.next/standalone ./
+COPY --chown=nextjs:nodejs --from=builder /app/.next/static ./.next/static
+COPY --chown=nextjs:nodejs --from=builder /app/public ./public
+COPY --chown=nextjs:nodejs --from=builder /app/src ./src
+COPY --chown=nextjs:nodejs --from=builder /app/package.json ./package.json
+COPY --chown=nextjs:nodejs --from=builder /app/next.config.js ./next.config.js
+COPY --chown=nextjs:nodejs --from=builder /app/postcss.config.js ./postcss.config.js
+COPY --chown=nextjs:nodejs --from=builder /app/tailwind.config.ts ./tailwind.config.ts
+COPY --chown=nextjs:nodejs --from=builder /app/tsconfig.json ./tsconfig.json
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 EXPOSE 3000
 
+# Runs as root (dropped to `nextjs` inside the entrypoint) so it can chown
+# the mounted /data volume before the app ever starts.
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "server.js"]

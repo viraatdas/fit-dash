@@ -15,10 +15,15 @@ interface RecompInsight {
   logging_note?: string;
   context: {
     inBody: {
-      latest: { date: string; weight: number; bodyFatPercentage: number; muscleMass: number; bodyFatMass?: number };
+      // The latest InBody (bioimpedance) scan — used for trend deltas + composition detail.
+      // Null when no InBody scan exists at all (e.g. only a DEXA reading has ever been logged).
+      latest: { date: string; weight: number; bodyFatPercentage: number; muscleMass: number; bodyFatMass?: number } | null;
       prior: { date: string } | null;
       daysBetween: number | null;
       deltas: { weight: number; muscleMass: number; bodyFatPercentage: number; bodyFatMass: number | null } | null;
+      // The single most recent body-fat reading regardless of method — this is the
+      // "current" BF% used for gap-to-goal, which may be a DEXA reading.
+      currentBodyFat: { value: number; source: 'inbody' | 'dexa'; date: string; dateUnknown: boolean };
     };
     workouts: { sessionCount: number; avgDaysBetween: number | null };
     food: { daysLogged: number; avgCalories: number; avgProtein: number };
@@ -54,6 +59,8 @@ export function RecompVerdict({ inBodyEntries }: { inBodyEntries: InBodyEntry[] 
         visceralFatArea: e.visceralFatArea,
         trunkFatMass: e.trunkFatMass,
         basalMetabolicRate: e.basalMetabolicRate,
+        source: e.source ?? 'inbody',
+        dateUnknown: !!e.dateUnknown,
       })),
     };
 
@@ -128,6 +135,25 @@ export function RecompVerdict({ inBodyEntries }: { inBodyEntries: InBodyEntry[] 
         {/* One-line verdict */}
         <div className={`p-4 border-l-2 ${style.border} bg-n-surface-raised rounded-nothing-sm mb-4`}>
           <p className="text-sm text-n-text-primary">{data.verdict}</p>
+        </div>
+
+        {/* Current body fat — may be a DEXA reading, distinct from the InBody trend below */}
+        <div className="mb-4 p-3 bg-n-surface-raised rounded-nothing-sm">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <span className="font-mono text-xs text-n-text-secondary">
+              Current Body Fat: <span className="text-n-text-primary">{data.context.inBody.currentBodyFat.value}%</span>
+            </span>
+            <span className="font-mono text-[9px] uppercase tracking-[0.06em] text-n-text-disabled">
+              {data.context.inBody.currentBodyFat.source === 'dexa'
+                ? `DEXA${data.context.inBody.currentBodyFat.dateUnknown ? ' · date unknown' : ` · ${data.context.inBody.currentBodyFat.date}`}`
+                : `InBody · ${data.context.inBody.currentBodyFat.date}`}
+            </span>
+          </div>
+          {data.context.inBody.currentBodyFat.source === 'dexa' && (
+            <p className="font-mono text-[10px] text-n-text-disabled mt-2 leading-relaxed">
+              DEXA typically reads several points higher than InBody&apos;s bioimpedance method — this reflects measurement method, not fat gained. Trend deltas below compare InBody scans only.
+            </p>
+          )}
         </div>
 
         {/* Deltas snapshot */}
