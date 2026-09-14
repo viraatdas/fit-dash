@@ -59,12 +59,21 @@ const NON_BARBELL_KEYWORDS = [
 // Keywords in the raw name that mean it IS a barbell exercise
 const BARBELL_KEYWORDS = ['barbell', 'bar bell', 'bb '];
 
+// Confirmed real typo in the data ("Backbell rows" / "Backbell back row ") that otherwise
+// silently drops the +45 bar: the raw name never matches BARBELL_KEYWORDS, and the
+// canonical name falls through to generic "Row" (not in ALWAYS_PLATE_ONLY), so
+// shouldAddBarWeight had nothing left to trigger on. Both sessions used per-side "Nx2"
+// plate notation ("25x2", "35x2") — genuine barbell loading, just misspelled.
+export function fixKnownTypos(text: string): string {
+  return text.replace(/backbell/gi, 'barbell');
+}
+
 /**
  * Determines if an exercise uses a barbell based on both normalized and raw names.
  * Does NOT account for format-based detection (x2 plate format) — see shouldAddBarWeight.
  */
 export function usesBarbell(normalizedName: string, rawName?: string): boolean {
-  const rawLower = (rawName || '').toLowerCase();
+  const rawLower = fixKnownTypos((rawName || '').toLowerCase());
 
   if (rawLower && NON_BARBELL_KEYWORDS.some(kw => rawLower.includes(kw))) {
     return false;
@@ -88,7 +97,7 @@ export function shouldAddBarWeight(
   rawName: string,
   hasPlatePerSideFormat: boolean
 ): boolean {
-  const rawLower = rawName.toLowerCase();
+  const rawLower = fixKnownTypos(rawName.toLowerCase());
 
   // Non-barbell keywords override everything
   if (NON_BARBELL_KEYWORDS.some(kw => rawLower.includes(kw))) {

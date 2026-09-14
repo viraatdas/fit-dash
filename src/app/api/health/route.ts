@@ -2,17 +2,12 @@ import { NextResponse } from 'next/server';
 import { DailyHealth, HealthAutoExportPayload } from '@/types';
 import { getHealthData, saveHealthData, clearHealthData } from '@/lib/health/data-store';
 
-// Cache for in-memory access
-let healthDataCache: DailyHealth[] | null = null;
-let lastUpdatedCache: string | null = null;
-
-async function loadFromStore(): Promise<{ data: DailyHealth[]; lastUpdated: string | null }> {
-  return getHealthData();
-}
-
-async function saveToStore(data: DailyHealth[], lastUpdated: string): Promise<void> {
-  await saveHealthData(data, lastUpdated);
-}
+// No route-level memo here — always read/write through data-store.ts, which
+// already has its own memory layer (shared globally, see store.ts). A
+// duplicate memo at this layer previously caused a race: the first GET after
+// a deploy (before the volume had data) would memoize an empty result and
+// keep serving it forever, even after the real data landed on disk via a
+// webhook POST or another route's read.
 
 const WEBHOOK_SECRET = process.env.HEALTH_WEBHOOK_SECRET;
 
@@ -257,8 +252,6 @@ export async function DELETE(request: Request) {
 
   try {
     await clearHealthData();
-    healthDataCache = [];
-    lastUpdatedCache = null;
     return NextResponse.json({ success: true, message: 'Health data cleared' });
   } catch (err) {
     console.error('Failed to clear health data store:', err);
@@ -280,17 +273,12 @@ export async function GET(request: Request) {
     });
   }
 
-  // Load from blob if cache is empty
-  if (healthDataCache === null) {
-    const loaded = await loadFromStore();
-    healthDataCache = loaded.data;
-    lastUpdatedCache = loaded.lastUpdated;
-  }
+  const { data, lastUpdated } = await getHealthData();
 
   const response = NextResponse.json({
     success: true,
-    lastUpdated: lastUpdatedCache,
-    data: healthDataCache,
+    lastUpdated,
+    data,
   });
   response.headers.set('Cache-Control', 's-maxage=3600, stale-while-revalidate=86400');
   return response;
@@ -359,19 +347,18 @@ export async function POST(request: Request) {
     // Process the data
     const processedData = processHealthExportData(payload);
 
+    let lastUpdated: string | null = null;
+
     if (processedData.length > 0) {
-      // Load existing data from blob if cache is empty
-      if (healthDataCache === null) {
-        const loaded = await loadFromStore();
-        healthDataCache = loaded.data;
-        lastUpdatedCache = loaded.lastUpdated;
-      }
+      // Always read the current stored data fresh — never a memoized/stale
+      // copy — so a merge can never clobber data another request just wrote.
+      const { data: existingData } = await getHealthData();
 
       // Merge with existing data - update existing dates or add new ones
       const dataMap = new Map<string, DailyHealth>();
 
       // Add existing data
-      for (const d of healthDataCache) {
+      for (const d of existingData) {
         const date = extractDate(d.date) || d.date;
         dataMap.set(date, { ...d, date });
       }
@@ -404,20 +391,20 @@ export async function POST(request: Request) {
         }
       }
 
-      healthDataCache = Array.from(dataMap.values())
+      const merged = Array.from(dataMap.values())
         .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
         .slice(0, 90);
 
-      lastUpdatedCache = new Date().toISOString();
+      lastUpdated = new Date().toISOString();
 
-      // Persist to blob
-      await saveToStore(healthDataCache, lastUpdatedCache);
+      // Persist to the durable store
+      await saveHealthData(merged, lastUpdated);
     }
 
     return NextResponse.json({
       success: true,
       message: `Processed ${processedData.length} days of health data`,
-      lastUpdated: lastUpdatedCache,
+      lastUpdated,
     });
   } catch (error) {
     console.error('Health data error:', error);

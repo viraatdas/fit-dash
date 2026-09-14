@@ -21,8 +21,30 @@ import { normalizeExerciseBatch, NormalizedExerciseResult } from '../exercise/ll
  * total already. v2 skipped bar weight for every LLM-sourced result, silently dropping 45lb
  * from every real per-side LLM parse. Also tolerates the "Ix5"/"lx5" (capital I / lowercase
  * l typo'd as the leading "1") notation so that case no longer needs the LLM at all.
+ *
+ * v4: fixes a confirmed "Backbell rows" / "Backbell back row" typo (see fixKnownTypos in
+ * barbell.ts) that silently dropped the 45lb bar on two real per-side-plate sessions —
+ * "backbell" never matched the BARBELL_KEYWORDS check, and its canonical name fell through
+ * to generic "Row" (not in ALWAYS_PLATE_ONLY), so nothing ever triggered bar weight for it.
+ *
+ * Investigated but NOT changed here: a production-only ambiguous session, "Back rows
+ * (superset)" (raw "3x10 - 120", no equipment word, no per-side format), got Gemini-
+ * classified "Barbell Row" / usesBarbell:true and picked up a +45 bar (120 -> 165) with no
+ * textual corroboration. Tried requiring an explicit "barbell" keyword (or per-side format)
+ * before trusting `llmResult.usesBarbell` for this — it fixed that one case but broke two
+ * confirmed-correct ones on cross-check: "Calf raises (with barbell)" plain-number sessions
+ * started getting a bar added BECAUSE they said "barbell", exactly what
+ * FORMAT_DEPENDENT_BAR_WEIGHT exists to prevent (this name has a real per-side "80x2"
+ * session too — same dual-notation ambiguity as Chest Press); and a legit "Bench Press"
+ * session's e1RM got worse (135ish -> 45) because of an unrelated, separate "45 + 45"
+ * two-part weight-summing gap this parser doesn't handle (parseSetString only captures the
+ * first number before "+" — see the "Chest Press"-style dual-notation note in barbell.ts for
+ * the general pattern, and flag the 2-part "+" gap for a future PARSER_VERSION bump). Left
+ * "Back rows (superset)" alone: it's a single occurrence with nothing to cross-reference,
+ * its e1RM (220) isn't outlier-guard-flagged, and it isn't implausible for that lift's own
+ * 113-220 range either way.
  */
-export const PARSER_VERSION = 3;
+export const PARSER_VERSION = 4;
 
 interface RichText {
   plain_text: string;
@@ -392,6 +414,21 @@ export async function parseNotionPage(blocks: NotionBlock[]): Promise<Workout[]>
 
         // Add bar weight — uses format detection for format-dependent exercises (e.g. an
         // exercise logged under the same name for both a machine and a loaded barbell).
+        //
+        // Tried and reverted: requiring hasExplicitBarbellKeyword(exerciseName) here too
+        // (to stop Gemini's usesBarbell guess alone from adding a bar) looked right for one
+        // ambiguous production session ("Back rows (superset)", no equipment word, no
+        // per-side format) but broke two confirmed-correct cases on cross-check: it started
+        // adding a bar to "Calf raises (with barbell)" plain-number sessions specifically
+        // BECAUSE they said "barbell" — exactly what FORMAT_DEPENDENT_BAR_WEIGHT exists to
+        // prevent (this name has a second, real per-side "80x2" session too, so it's the
+        // same dual-notation ambiguity as Chest Press) — and it stopped adding a bar to a
+        // legit "Bench Press" session whose weight already read low (45) from an unrelated,
+        // separate "45 + 45" two-part weight-summing gap this parser doesn't handle (see
+        // TODO note near parseSetString). "Back rows (superset)" is a single occurrence with
+        // no repeat to cross-reference, e1RM 220 isn't outlier-guard-flagged, and it isn't
+        // implausible for that lift's own 113-220 range either way — left alone rather than
+        // risk two confirmed regressions to "fix" one ambiguous, unconfirmed one.
         const addBar = llmResult
           ? (llmResult.usesBarbell && (hasPlatePerSide || !isFormatDependentBarWeight(normalizedName)))
           : shouldAddBarWeight(normalizedName, exerciseName, hasPlatePerSide);
@@ -448,6 +485,7 @@ export async function parseNotionPage(blocks: NotionBlock[]): Promise<Workout[]>
         // usual bar logic even though `hasBarInclusiveNotation` is true for the session.)
         const skipBarWeight = source === 'llm' && hasBarInclusiveNotation;
         if (!skipBarWeight) {
+          // Same as Pass 2 above (see that comment for what was tried and reverted here).
           const addBar = llmResult
             ? llmResult.usesBarbell && (hasPlatePerSideFormat || !isFormatDependentBarWeight(normalizedName))
             : shouldAddBarWeight(normalizedName, item.name, hasPlatePerSideFormat);

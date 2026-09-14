@@ -1,6 +1,5 @@
 'use client';
 
-import { format } from 'date-fns';
 import {
   LineChart,
   Line,
@@ -19,6 +18,9 @@ import {
   applyDataCorrection,
   chartRangeStart,
   defaultChartRange,
+  computeChartTicks,
+  formatChartTick,
+  formatChartTooltipDate,
   ChartRangeKey,
 } from '@/lib/exercise/strength';
 import { RangeSelector } from './RangeSelector';
@@ -35,17 +37,6 @@ interface ChartDataPoint {
 }
 
 const DEFAULT_EXERCISE = 'Bench Press';
-
-/** X-axis tick label: day-level ("Sep 3") for short ranges, month+year ("Mar '26") for
- *  longer ones — and a year suffix on day-level ticks too whenever the visible window itself
- *  spans a year boundary, so no tick is ever ambiguous about which year it falls in. */
-function formatTick(timestamp: number, range: ChartRangeKey, spansYearBoundary: boolean): string {
-  const date = new Date(timestamp);
-  if (range === '1M' || range === '3M') {
-    return spansYearBoundary ? format(date, "MMM d ''yy") : format(date, 'MMM d');
-  }
-  return format(date, "MMM ''yy");
-}
 
 export function WeightProgressChart({ workouts }: WeightProgressChartProps) {
   const exercises = useMemo(() => {
@@ -134,6 +125,13 @@ export function WeightProgressChart({ workouts }: WeightProgressChartProps) {
     return [chartData[0].timestamp, chartData[chartData.length - 1].timestamp];
   }, [chartData]);
 
+  // Explicit calendar-boundary ticks — see computeChartTicks in strength.ts for why this is
+  // necessary (recharts' default numeric-axis ticks don't align to calendar boundaries).
+  const ticks = useMemo(
+    () => (chartData.length > 0 ? computeChartTicks(range, domain[0], domain[1]) : []),
+    [range, domain, chartData.length]
+  );
+
   const spansYearBoundary =
     chartData.length > 0 &&
     new Date(chartData[0].timestamp).getFullYear() !== new Date(chartData[chartData.length - 1].timestamp).getFullYear();
@@ -180,13 +178,14 @@ export function WeightProgressChart({ workouts }: WeightProgressChartProps) {
                   type="number"
                   scale="time"
                   domain={domain}
+                  ticks={ticks}
                   fontSize={10}
                   fontFamily="Space Mono"
-                  tickFormatter={(value) => formatTick(value, range, spansYearBoundary)}
+                  tickFormatter={(value) => formatChartTick(value, range, spansYearBoundary)}
                 />
                 <YAxis fontSize={10} fontFamily="Space Mono" tickFormatter={(value) => `${value}`} />
                 <Tooltip
-                  labelFormatter={(label) => format(new Date(label as number), 'EEE, MMM d, yyyy')}
+                  labelFormatter={(label) => formatChartTooltipDate(label as number)}
                   formatter={(value, name) => {
                     if (name === 'maxWeight') return [`${value} lbs`, 'MAX'];
                     if (name === 'weight') return [`${value} lbs`, 'AVG'];

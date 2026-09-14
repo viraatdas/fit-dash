@@ -33,7 +33,14 @@ interface FoodRefreshState {
   lastError: FoodRefreshError | null;
 }
 
-const state: FoodRefreshState = { inFlightPromise: null, lastCheckAt: 0, lastError: null };
+// Anchored on globalThis, not a plain module const — see the matching
+// comment in notion-cache.ts: Next's standalone output can give a route
+// handler bundle and the page bundle separate module instances of "the
+// same" imported file, so this needs one real globalThis object per Node
+// process to actually be shared (and single-flight) across the whole app.
+const globalForFoodCache = globalThis as typeof globalThis & { __fitdashFoodCache?: FoodRefreshState };
+globalForFoodCache.__fitdashFoodCache ??= { inFlightPromise: null, lastCheckAt: 0, lastError: null };
+const state = globalForFoodCache.__fitdashFoodCache;
 
 interface NotionBlock {
   id: string;

@@ -17,11 +17,22 @@ import crypto from 'crypto';
  * Any disk failure degrades to memory-only (still correct within the
  * process, just not durable across restarts) — callers never need to handle
  * store errors themselves.
+ *
+ * Module state lives on `globalThis`, not a plain module-level `let`/`const`:
+ * Next.js's standalone output can give a route handler bundle and the page
+ * bundle separate webpack module instances of "the same" imported file, so a
+ * normal module singleton isn't actually shared across the whole app. One
+ * real `globalThis` per Node process is.
  */
 
-const memory = new Map<string, unknown>();
+interface CacheStoreGlobalState {
+  memory: Map<string, unknown>;
+  resolvedDirPromise: Promise<string> | null;
+}
 
-let resolvedDirPromise: Promise<string> | null = null;
+const globalForCacheStore = globalThis as typeof globalThis & { __fitdashCacheStore?: CacheStoreGlobalState };
+globalForCacheStore.__fitdashCacheStore ??= { memory: new Map(), resolvedDirPromise: null };
+const state = globalForCacheStore.__fitdashCacheStore;
 
 async function isWritableDir(dir: string): Promise<boolean> {
   try {
@@ -60,10 +71,10 @@ async function resolveCacheDir(): Promise<string> {
 }
 
 function getCacheDir(): Promise<string> {
-  if (!resolvedDirPromise) {
-    resolvedDirPromise = resolveCacheDir();
+  if (!state.resolvedDirPromise) {
+    state.resolvedDirPromise = resolveCacheDir();
   }
-  return resolvedDirPromise;
+  return state.resolvedDirPromise;
 }
 
 function sanitizeKey(key: string): string {
@@ -79,13 +90,13 @@ async function filePathFor(key: string): Promise<string> {
 }
 
 export async function getCached<T>(key: string): Promise<T | null> {
-  if (memory.has(key)) return memory.get(key) as T;
+  if (state.memory.has(key)) return state.memory.get(key) as T;
 
   try {
     const file = await filePathFor(key);
     const raw = await fs.readFile(file, 'utf8');
     const value = JSON.parse(raw) as T;
-    memory.set(key, value);
+    state.memory.set(key, value);
     return value;
   } catch {
     return null;
@@ -93,7 +104,7 @@ export async function getCached<T>(key: string): Promise<T | null> {
 }
 
 export async function setCached<T>(key: string, value: T): Promise<void> {
-  memory.set(key, value);
+  state.memory.set(key, value);
 
   try {
     const file = await filePathFor(key);
@@ -106,7 +117,7 @@ export async function setCached<T>(key: string, value: T): Promise<void> {
 }
 
 export async function deleteCached(key: string): Promise<void> {
-  memory.delete(key);
+  state.memory.delete(key);
   try {
     const file = await filePathFor(key);
     await fs.unlink(file);
@@ -139,8 +150,8 @@ export async function deleteCachedByPrefix(prefix: string): Promise<number> {
     // cache dir may not exist yet — nothing to delete
   }
 
-  for (const key of Array.from(memory.keys())) {
-    if (key.startsWith(prefix)) memory.delete(key);
+  for (const key of Array.from(state.memory.keys())) {
+    if (key.startsWith(prefix)) state.memory.delete(key);
   }
 
   return deleted;
@@ -148,7 +159,7 @@ export async function deleteCachedByPrefix(prefix: string): Promise<number> {
 
 /** Returns the in-memory value only, without touching disk. Useful for sync-ish fast paths. */
 export function peekCached<T>(key: string): T | null {
-  return memory.has(key) ? (memory.get(key) as T) : null;
+  return state.memory.has(key) ? (state.memory.get(key) as T) : null;
 }
 
 /** Exposed for diagnostics/tests. */

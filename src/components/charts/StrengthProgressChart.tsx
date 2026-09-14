@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { format } from 'date-fns';
 import {
   ComposedChart,
   Line,
@@ -23,6 +22,9 @@ import {
   applyDataCorrection,
   chartRangeStart,
   defaultChartRange,
+  computeChartTicks,
+  formatChartTick,
+  formatChartTooltipDate,
   ChartRangeKey,
   CHART_RANGE_LABELS,
   LiftGroupKey,
@@ -59,17 +61,6 @@ function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-}
-
-/** X-axis tick label: day-level ("Sep 3") for short ranges, month+year ("Mar '26") for
- *  longer ones — and a year suffix on day-level ticks too whenever the visible window itself
- *  spans a year boundary, so no tick is ever ambiguous about which year it falls in. */
-function formatTick(timestamp: number, range: ChartRangeKey, spansYearBoundary: boolean): string {
-  const date = new Date(timestamp);
-  if (range === '1M' || range === '3M') {
-    return spansYearBoundary ? format(date, "MMM d ''yy") : format(date, 'MMM d');
-  }
-  return format(date, "MMM ''yy");
 }
 
 const CHART_COLORS = {
@@ -227,6 +218,14 @@ export function StrengthProgressChart({ workouts }: StrengthProgressChartProps) 
     return [rangeData[0].timestamp, rangeData[rangeData.length - 1].timestamp];
   }, [rangeData]);
 
+  // Explicit calendar-boundary ticks — see computeChartTicks in strength.ts for why this is
+  // necessary (recharts' default numeric-axis ticks don't align to calendar boundaries,
+  // which produced repeated/duplicate-looking labels once formatted at month granularity).
+  const ticks = useMemo(
+    () => (rangeData.length > 0 ? computeChartTicks(range, domain[0], domain[1]) : []),
+    [range, domain, rangeData.length]
+  );
+
   const spansYearBoundary =
     rangeData.length > 0 &&
     new Date(rangeData[0].timestamp).getFullYear() !== new Date(rangeData[rangeData.length - 1].timestamp).getFullYear();
@@ -273,14 +272,15 @@ export function StrengthProgressChart({ workouts }: StrengthProgressChartProps) 
                 type="number"
                 scale="time"
                 domain={domain}
+                ticks={ticks}
                 fontSize={10}
                 tickLine={false}
                 fontFamily="Space Mono"
-                tickFormatter={(value) => formatTick(value, range, spansYearBoundary)}
+                tickFormatter={(value) => formatChartTick(value, range, spansYearBoundary)}
               />
               <YAxis fontSize={10} tickLine={false} fontFamily="Space Mono" />
               <Tooltip
-                labelFormatter={(label) => format(new Date(label as number), 'EEE, MMM d, yyyy')}
+                labelFormatter={(label) => formatChartTooltipDate(label as number)}
                 formatter={(value, name) => {
                   const labels: Record<string, string> = { chestPress: 'CHEST', squat: 'SQUAT', row: 'ROW', legPress: 'LEG PRESS', avgStrength: 'AVG', trendLine: 'TREND', goalLine: 'GOAL' };
                   return [`${value} lbs`, labels[name as string] || name];

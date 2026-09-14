@@ -1,3 +1,5 @@
+import { fixKnownTypos } from './barbell';
+
 // Maps common variations to canonical exercise names
 const EXERCISE_ALIASES: Record<string, string> = {
   // Chest
@@ -180,8 +182,13 @@ function resolveBaseCanonicalName(lowerName: string, exerciseName: string): stri
 const DUMBBELL_KEYWORDS = ['dumbbell', 'dumbell', 'db '];
 
 export function getCanonicalName(exerciseName: string): string {
-  const lowerName = exerciseName.toLowerCase().trim();
-  const base = resolveBaseCanonicalName(lowerName, exerciseName);
+  // Fixes a confirmed real typo ("Backbell rows" -> "barbell rows") before alias matching,
+  // same correction barbell.ts applies for its own bar-weight keyword check — see
+  // fixKnownTypos there for why. Applied here too (including to the capitalize-fallback
+  // input) so the exercise identity itself, not just the weight, reflects what was meant.
+  const corrected = fixKnownTypos(exerciseName);
+  const lowerName = corrected.toLowerCase().trim();
+  const base = resolveBaseCanonicalName(lowerName, corrected);
 
   if (!base.toLowerCase().includes('dumbbell') && DUMBBELL_KEYWORDS.some(kw => lowerName.includes(kw))) {
     return `Dumbbell ${base}`;

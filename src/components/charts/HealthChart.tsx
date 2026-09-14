@@ -68,6 +68,22 @@ export function HealthChart({ data }: HealthChartProps) {
     });
   }, [data, windowDates]);
 
+  // Explicit x-axis ticks for the Activity chart below: it's a categorical axis (dataKey
+  // "label") over all WINDOW_DAYS days, and without an explicit tick set recharts renders
+  // every single day's label, which collide/run together ("Sep 9Sep 10Sep 11..."). Thin to
+  // roughly every 3-4 days, always keeping the most recent day.
+  const activityTicks = useMemo(() => {
+    if (chartData.length === 0) return undefined;
+    const targetTickCount = 8;
+    const step = Math.max(1, Math.ceil(chartData.length / targetTickCount));
+    const indices = new Set<number>();
+    for (let i = 0; i < chartData.length; i += step) indices.add(i);
+    indices.add(chartData.length - 1);
+    return Array.from(indices)
+      .sort((a, b) => a - b)
+      .map(i => chartData[i].label);
+  }, [chartData]);
+
   const qualifyingDays = useMemo(() => data.filter(hasFullDayHourlyCoverage), [data]);
 
   const activeDay = selectedDay ?? qualifyingDays[0]?.date ?? null;
@@ -113,7 +129,7 @@ export function HealthChart({ data }: HealthChartProps) {
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="label" fontSize={10} tickLine={false} fontFamily="Space Mono" />
+                <XAxis dataKey="label" ticks={activityTicks} fontSize={10} tickLine={false} fontFamily="Space Mono" />
                 <YAxis yAxisId="steps" fontSize={10} tickLine={false} fontFamily="Space Mono" tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
                 <YAxis yAxisId="cal" orientation="right" fontSize={10} tickLine={false} fontFamily="Space Mono" />
                 <Tooltip

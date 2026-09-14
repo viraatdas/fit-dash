@@ -90,23 +90,35 @@ interface RefreshState {
   backoffUntil: number;
   lastError: RefreshError | null;
   lastSuccessAt: number | null;
+  // Rate gate: next allowed request-start time (shared with the backoff/
+  // single-flight state below since it needs the exact same singleton
+  // treatment — see the comment on globalForNotionCache).
+  nextSlotAt: number;
 }
 
-const state: RefreshState = {
+// Next.js's standalone output can give a route handler bundle and the page
+// bundle separate webpack module instances of "the same" imported file, so a
+// plain module-level `const state = {...}` is NOT actually a singleton
+// across the whole app — anchoring it on `globalThis` (one real object per
+// Node process) is what makes the single-flight crawl and rate gate truly
+// shared between every route and page that imports this module.
+const globalForNotionCache = globalThis as typeof globalThis & { __fitdashNotionCache?: RefreshState };
+globalForNotionCache.__fitdashNotionCache ??= {
   inFlightPromise: null,
   lastCheckAt: 0,
   backoffUntil: 0,
   lastError: null,
   lastSuccessAt: null,
+  nextSlotAt: 0,
 };
+const state = globalForNotionCache.__fitdashNotionCache;
 
 // --- Global rate gate: spaces out Notion request *starts* to stay under
 // RATE_LIMIT_PER_SECOND regardless of how many are logically concurrent. ---
-let nextSlotAt = 0;
 async function rateLimitGate(): Promise<void> {
   const now = Date.now();
-  const waitUntil = Math.max(now, nextSlotAt);
-  nextSlotAt = waitUntil + MIN_REQUEST_INTERVAL_MS;
+  const waitUntil = Math.max(now, state.nextSlotAt);
+  state.nextSlotAt = waitUntil + MIN_REQUEST_INTERVAL_MS;
   const delay = waitUntil - now;
   if (delay > 0) await new Promise(resolve => setTimeout(resolve, delay));
 }
@@ -167,20 +179,34 @@ async function mapWithConcurrency<T, R>(
   const results: Array<R | null> = new Array(items.length).fill(null);
   let cursor = 0;
 
+  // A block that itself got the 429 gets one retry once the shared backoff
+  // clears, instead of being silently dropped for the whole crawl — the
+  // doRefresh missing-children check below is the wider safety net for
+  // anything that never even got a chance to start this cycle.
+  async function attempt(index: number, alreadyRetried: boolean): Promise<void> {
+    try {
+      results[index] = await fn(items[index]);
+    } catch (err) {
+      if (isRateLimitError(err) && !alreadyRetried) {
+        const waitMs = Math.max(0, state.backoffUntil - Date.now());
+        if (waitMs > 0) await new Promise(resolve => setTimeout(resolve, waitMs));
+        await attempt(index, true);
+        return;
+      }
+      // notionCall() already opened/extended the shared backoff window on a
+      // 429; just keep whatever was cached for this block and move on.
+      if (!(err instanceof NotionBackoffActiveError)) {
+        console.error('[notion-cache] child fetch failed, keeping prior cache for this block:', err instanceof Error ? err.message : err);
+      }
+      results[index] = null;
+    }
+  }
+
   async function worker() {
     while (cursor < items.length) {
       if (Date.now() < state.backoffUntil) return; // stop starting new work while cooling down
       const index = cursor++;
-      try {
-        results[index] = await fn(items[index]);
-      } catch (err) {
-        // notionCall() already opened the shared backoff window on a 429;
-        // just keep whatever was cached for this block and move on.
-        if (!(err instanceof NotionBackoffActiveError)) {
-          console.error('[notion-cache] child fetch failed, keeping prior cache for this block:', err instanceof Error ? err.message : err);
-        }
-        results[index] = null;
-      }
+      await attempt(index, false);
     }
   }
 
@@ -329,6 +355,18 @@ async function reparseFromRawCache(): Promise<boolean> {
   return true;
 }
 
+/**
+ * True when the raw cache has a numbered_list_item that has children in
+ * Notion but no cached children entry — e.g. a child fetch that got dropped
+ * after a 429 (and its one retry, see mapWithConcurrency) on a fresh volume
+ * with no prior cache to fall back on. Without this check, `doRefresh` would
+ * keep returning early forever once `pageLastEdited` stops changing, and
+ * that block would silently stay empty until the page is next edited.
+ */
+function hasMissingChildren(raw: RawCache): boolean {
+  return raw.topLevel.some(b => b.type === 'numbered_list_item' && b.has_children && !raw.children[b.id]);
+}
+
 async function doRefresh(force: boolean): Promise<void> {
   if (isNotionBackoffActive()) return; // still cooling down from a recent 429
 
@@ -336,8 +374,8 @@ async function doRefresh(force: boolean): Promise<void> {
   if (!pageLastEdited) return;
 
   const prevRaw = await getCached<RawCache>(RAW_KEY);
-  if (!force && prevRaw && prevRaw.pageLastEdited === pageLastEdited) {
-    return; // nothing changed on the page since our last crawl
+  if (!force && prevRaw && prevRaw.pageLastEdited === pageLastEdited && !hasMissingChildren(prevRaw)) {
+    return; // nothing changed on the page, and nothing is missing from our cache
   }
 
   await incrementalCrawl(pageLastEdited, prevRaw);
